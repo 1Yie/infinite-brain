@@ -56,6 +56,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 		if (response.data && 'user' in response.data) {
 			setIsLogged(true);
 			setUser(response.data.user as User);
+			navigate('/room');
 		}
 
 		return response;

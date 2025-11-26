@@ -1,4 +1,4 @@
-import { createBrowserRouter, Navigate } from 'react-router-dom';
+import { createBrowserRouter } from 'react-router-dom';
 import { AppLayout } from '../layout/app-layout';
 import { AuthProvider } from '../context/auth-context';
 import { RequireAuth, AnonymousOnly } from '../components/router/auth-guard';
@@ -6,8 +6,14 @@ import { Whiteboard } from '../components/white-board';
 import { Login } from '../components/auth/login';
 import { Register } from '../components/auth/register';
 import { RoomPage } from '../components/room';
+import { HomePage } from '../components/home';
 
 export const router = createBrowserRouter([
+	{
+		path: '/',
+		element: <HomePage />,
+	},
+
 	{
 		path: '/',
 		element: (
@@ -19,23 +25,16 @@ export const router = createBrowserRouter([
 		),
 		children: [
 			{
-				index: true,
-				element: (
-					<>
-						<RoomPage />
-					</>
-				),
+				path: 'room',
+				element: <RoomPage />,
 			},
 			{
-				path: 'board',
-				element: <Navigate to="/" replace />,
-			},
-			{
-				path: 'board/:roomId',
+				path: 'room/:roomId',
 				element: <Whiteboard />,
 			},
 		],
 	},
+
 	{
 		path: '/login',
 		element: (

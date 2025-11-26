@@ -1,16 +1,17 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { wsApi } from '../api/ws';
+import type { StrokeData } from '../types/whiteboard';
 
 type BoardSocket = ReturnType<typeof wsApi.connect>;
 type DrawData = Parameters<typeof wsApi.sendDraw>[1];
 
-export interface StrokeData {
-	id: string;
-	tool: string;
-	color: string;
-	size: number;
-	points: { x: number; y: number }[];
-}
+// export interface StrokeData {
+// 	id: string;
+// 	tool: string;
+// 	color: string;
+// 	size: number;
+// 	points: { x: number; y: number }[];
+// }
 
 type ServerMessage =
 	| { type: 'connected'; userId: string; username: string; timestamp: number }
@@ -64,7 +65,8 @@ export function useWebSocket(
 	);
 
 	useEffect(() => {
-		if (!isLoggedIn || !roomId) {
+		// 只要有 roomId，无论是否登录都应该连接
+		if (!roomId) {
 			if (socketRef.current) {
 				try {
 					socketRef.current.close?.();

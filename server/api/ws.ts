@@ -2,7 +2,7 @@ import { Elysia, t } from 'elysia';
 import { db } from '../db';
 import { strokes } from '../db/schema';
 import { eq } from 'drizzle-orm';
-import { auth } from '../utils/verify';
+import { optionalAuth } from '../utils/verify';
 
 const DrawDataSchema = t.Object({
 	x: t.Number(),
@@ -48,7 +48,7 @@ const MessageSchema = t.Object({
 const roomUsers = new Map<string, Set<string>>();
 
 export const websocketRoutes = new Elysia({ prefix: '/ws' })
-	.use(auth)
+	.use(optionalAuth)
 	.derive(() => {
 		return {
 			connectionId: crypto.randomUUID(),

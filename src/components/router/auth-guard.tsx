@@ -38,9 +38,9 @@ export function AnonymousOnly({ children }: { children: React.ReactElement }) {
 		return;
 	}
 
-	// 已登录 → 不许访问登录页 → 回首页
+	// 已登录 → 不许访问登录页 → 回 room 页
 	if (isLogged) {
-		return <Navigate to="/" replace />;
+		return <Navigate to="/room" replace />;
 	}
 
 	return (

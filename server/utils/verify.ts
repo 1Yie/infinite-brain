@@ -41,3 +41,48 @@ export const auth = (app: Elysia) =>
 			},
 		};
 	});
+
+export const optionalAuth = (app: Elysia) =>
+	app.use(jwtAccess).derive(async ({ jwt, cookie }) => {
+		const token = cookie.auth?.value;
+
+		// 如果没有 token，返回游客用户
+		if (!token) {
+			return {
+				user: {
+					id: `guest-${crypto.randomUUID()}`,
+					name: 'Guest',
+				},
+			};
+		}
+
+		const rawPayload = await jwt.verify(token as string);
+		if (!rawPayload) {
+			// token 无效，返回游客用户
+			return {
+				user: {
+					id: `guest-${crypto.randomUUID()}`,
+					name: 'Guest',
+				},
+			};
+		}
+
+		const payload = rawPayload as unknown as JwtPayload;
+
+		if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
+			// Token 已过期，返回游客用户
+			return {
+				user: {
+					id: `guest-${crypto.randomUUID()}`,
+					name: 'Guest',
+				},
+			};
+		}
+
+		return {
+			user: {
+				...payload,
+				id: payload.id,
+			},
+		};
+	});
