@@ -73,10 +73,16 @@ export function HomePage() {
 			if (msg.type === 'clear') canvasRef.current.clear();
 			if (msg.type === 'history-sync')
 				canvasRef.current.syncHistory(msg.data as StrokeData[]);
-			if (msg.type === 'undo' && msg.userId !== userId)
-				canvasRef.current.undo();
-			if (msg.type === 'redo')
-				canvasRef.current.addStroke(msg.data as StrokeData);
+			if (msg.type === 'undo') {
+				// 处理撤销消息：根据服务器广播的 strokeId 删除指定笔画
+				if (msg.strokeId) {
+					canvasRef.current?.removeStrokeById(msg.strokeId);
+				}
+			}
+			if (msg.type === 'redo') {
+				// 处理重做消息：添加服务器广播的笔画数据
+				canvasRef.current?.addStroke(msg.data as StrokeData);
+			}
 		});
 		return () => unsubscribe();
 	}, [userId, onMessage]);
@@ -90,7 +96,7 @@ export function HomePage() {
 	);
 
 	const handleUndo = useCallback(() => {
-		canvasRef.current?.undo();
+		// 只发送撤销请求给后端，由服务器控制撤销操作
 		sendUndo();
 	}, [sendUndo]);
 
@@ -427,7 +433,9 @@ export function HomePage() {
 						</div>
 					</div>
 					<div className="mt-8 border-t border-zinc-800 pt-8 text-center text-sm text-zinc-400">
-						<p>© 2025 Infinite Board. All rights reserved.</p>
+						<p>
+							© {new Date().getFullYear()} Infinite Board. All rights reserved.
+						</p>
 					</div>
 				</div>
 			</footer>

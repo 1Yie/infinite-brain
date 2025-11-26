@@ -102,6 +102,12 @@ export function RoomPage() {
 			setNewRoomName('');
 			setIsPrivateRoom(false);
 			setRoomPassword('');
+
+			// 如果是创建者，设置房间授权状态，避免跳转后还要输入密码
+			if (isPrivateRoom) {
+				sessionStorage.setItem(`room_auth_${roomId}`, 'true');
+			}
+
 			window.location.href = `/room/${roomId}`;
 		} finally {
 			setIsCreating(false);
@@ -160,7 +166,19 @@ export function RoomPage() {
 
 	const renderRoomCreatedAt = (room: Room) => {
 		if (room.id === 'default-room') {
-			return <span className="text-xs text-zinc-500">系统默认</span>;
+			return (
+				<span className="flex items-center gap-1.5 text-xs text-zinc-500">
+					<svg
+						className="h-3.5 w-3.5"
+						fill="none"
+						stroke="currentColor"
+						viewBox="0 0 24 24"
+					>
+						<circle cx="12" cy="12" r="10" strokeWidth={2} />
+					</svg>
+					系统默认
+				</span>
+			);
 		}
 
 		return new Date(room.createdAt!).toLocaleDateString('zh-CN', {
@@ -214,7 +232,11 @@ export function RoomPage() {
 								<div className="flex items-center justify-between">
 									<span className="text-sm text-zinc-600">我的房间</span>
 									<span className="text-lg font-bold text-zinc-900">
-										{rooms.filter((room) => room.id !== 'default-room').length}
+										{
+											rooms.filter(
+												(room) => room.ownerId === user?.id?.toString()
+											).length
+										}
 									</span>
 								</div>
 							</div>
@@ -487,51 +509,76 @@ export function RoomPage() {
 														</span>
 													)}
 												</h4>
-												<p className="mt-1.5 flex items-center gap-1.5 text-xs text-zinc-500">
-													<svg
-														className="h-3.5 w-3.5"
-														fill="none"
-														stroke="currentColor"
-														viewBox="0 0 24 24"
+												<p className="mt-1.5 flex items-center text-xs text-zinc-500">
+													{room.id === 'default-room' ? (
+														renderRoomCreatedAt(room)
+													) : (
+														<>
+															<span className="flex items-center gap-1.5">
+																<svg
+																	className="h-3.5 w-3.5"
+																	fill="none"
+																	stroke="currentColor"
+																	viewBox="0 0 24 24"
+																>
+																	<path
+																		strokeLinecap="round"
+																		strokeLinejoin="round"
+																		strokeWidth={2}
+																		d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+																	/>
+																</svg>
+																{renderRoomCreatedAt(room)}
+															</span>
+															{room.creatorName && (
+																<>
+																	<span className="mx-1.5 text-base text-zinc-500">
+																		·
+																	</span>
+																	<span className="flex items-center gap-1.5">
+																		<svg
+																			className="h-3.5 w-3.5"
+																			fill="none"
+																			stroke="currentColor"
+																			viewBox="0 0 24 24"
+																		>
+																			<path
+																				strokeLinecap="round"
+																				strokeLinejoin="round"
+																				strokeWidth={2}
+																				d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+																			/>
+																		</svg>
+																		{room.creatorName}
+																	</span>
+																</>
+															)}
+														</>
+													)}
+												</p>
+											</div>
+											{room.id !== 'default-room' &&
+												room.ownerId === user?.id?.toString() && (
+													<button
+														onClick={(e) => handleDeleteRoom(e, room.id)}
+														className="rounded p-1.5 text-zinc-400 opacity-0 transition-all group-hover:opacity-100 hover:bg-red-50 hover:text-red-600"
+														title="删除房间"
 													>
-														{room.id === 'default-room' ? (
-															<path
-																d="M12 2a10 10 0 100 20 10 10 0 000-20zm0 4a6 6 0 110 12 6 6 0 010-12z"
-																fill="currentColor"
-															/>
-														) : (
+														<svg
+															className="h-4 w-4"
+															fill="none"
+															stroke="currentColor"
+															viewBox="0 0 24 24"
+														>
 															<path
 																strokeLinecap="round"
 																strokeLinejoin="round"
 																strokeWidth={2}
-																d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+																d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
 															/>
-														)}
-													</svg>
-													{renderRoomCreatedAt(room)}
-												</p>
-											</div>
-											{room.id !== 'default-room' && (
-												<button
-													onClick={(e) => handleDeleteRoom(e, room.id)}
-													className="rounded p-1.5 text-zinc-400 opacity-0 transition-all group-hover:opacity-100 hover:bg-red-50 hover:text-red-600"
-													title="删除房间"
-												>
-													<svg
-														className="h-4 w-4"
-														fill="none"
-														stroke="currentColor"
-														viewBox="0 0 24 24"
-													>
-														<path
-															strokeLinecap="round"
-															strokeLinejoin="round"
-															strokeWidth={2}
-															d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-														/>
-													</svg>
-												</button>
-											)}
+														</svg>
+													</button>
+												)}
 										</div>
 									</div>
 								))}

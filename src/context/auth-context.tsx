@@ -38,6 +38,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 					setUser(null);
 					// 显示错误消息
 					const message = (res as { message?: string })?.message;
+
 					if (message && message !== '未登录') {
 						toast.error(message);
 					}
@@ -57,6 +58,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 			setIsLogged(true);
 			setUser(response.data.user as User);
 			navigate('/room');
+		} else if (response.error) {
+			// 从 error.value 中提取错误信息并抛出异常
+			const errorValue = response.error.value;
+			if (errorValue && typeof errorValue === 'object' && errorValue.message) {
+				throw new Error(errorValue.message);
+			} else {
+				throw new Error('登录失败');
+			}
 		}
 
 		return response;

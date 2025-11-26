@@ -20,19 +20,13 @@ export function Login() {
 		setIsLoading(true);
 
 		try {
-			const response = await login(username.trim(), password);
-
-			if (response.data && 'user' in response.data) {
-				toast.success('登录成功');
-			} else if (response.error) {
-				const error = response.error as { message?: string };
-				toast.error(error.message || '登录失败');
-			} else {
-				toast.error('登录失败');
-			}
+			await login(username.trim(), password);
+			toast.success('登录成功');
 		} catch (error) {
 			console.error('登录错误:', error);
-			toast.error('登录失败，请稍后重试');
+			const errorMessage =
+				error instanceof Error ? error.message : '登录失败，请稍后重试';
+			toast.error(errorMessage);
 		} finally {
 			setIsLoading(false);
 		}
@@ -57,7 +51,7 @@ export function Login() {
 
 						{/* 笔记内容 */}
 						<div className="relative space-y-8">
-							{/* 特性列表 - 简洁风格 */}
+							{/* 特性列表 */}
 							<div className="space-y-6 pt-4">
 								<div className="flex items-start gap-4">
 									<div className="mt-1.5 flex-shrink-0">

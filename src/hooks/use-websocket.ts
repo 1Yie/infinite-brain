@@ -32,10 +32,16 @@ type ServerMessage =
 	| { type: 'error'; message: string }
 	| { type: 'draw'; data: DrawData; userId: string; timestamp: number }
 	| { type: 'clear'; userId: string; timestamp: number }
-	| { type: 'undo'; userId: string; timestamp: number }
+	| { type: 'undo'; strokeId: string | null; userId: string; timestamp: number }
 	| { type: 'redo'; data: StrokeData; userId: string; timestamp: number }
 	| { type: 'cursor'; data: DrawData; userId: string; timestamp: number }
-	| { type: 'history-sync'; data: StrokeData[]; timestamp: number };
+	| { type: 'history-sync'; data: StrokeData[]; timestamp: number }
+	| {
+			type: 'stroke-finished';
+			data: StrokeData;
+			userId: string;
+			timestamp: number;
+	  };
 
 interface UseWebSocketReturn {
 	isConnected: boolean;
@@ -46,7 +52,7 @@ interface UseWebSocketReturn {
 	sendDraw: (data: DrawData) => void;
 	sendCursor: (data: DrawData) => void;
 	// sendClear: () => void;
-	sendUndo: () => void;
+	sendUndo: (strokeId?: string) => void;
 	sendRedo: () => void;
 	sendStrokeFinish: (data: StrokeData) => void;
 	onMessage: (callback: (message: ServerMessage) => void) => () => void;
@@ -220,11 +226,14 @@ export function useWebSocket(
 	//   }
 	// }, [isConnected]);
 
-	const sendUndo = useCallback(() => {
-		if (socketRef.current && isConnected) {
-			wsApi.sendUndo(socketRef.current);
-		}
-	}, [isConnected]);
+	const sendUndo = useCallback(
+		(strokeId?: string) => {
+			if (socketRef.current && isConnected) {
+				wsApi.sendUndo(socketRef.current, strokeId);
+			}
+		},
+		[isConnected]
+	);
 
 	const sendRedo = useCallback(() => {
 		if (socketRef.current && isConnected) {

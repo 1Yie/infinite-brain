@@ -38,10 +38,16 @@ export const wsApi = {
 	/**
 	 * 辅助函数：发送撤销操作
 	 */
-	sendUndo: (connection: BoardSocket) => {
-		connection.send({
+	sendUndo: (connection: BoardSocket, strokeId?: string) => {
+		const message: SingleMessage = {
 			type: 'undo',
-		});
+		};
+
+		if (strokeId) {
+			message.strokeId = strokeId;
+		}
+
+		connection.send(message);
 	},
 
 	/**

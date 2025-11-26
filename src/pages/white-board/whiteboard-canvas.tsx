@@ -32,6 +32,7 @@ export interface StrokeData {
 	size: number;
 	points: Point[];
 	createdAt: Date;
+	userId: string;
 }
 
 interface WhiteboardCanvasProps {
@@ -43,7 +44,7 @@ interface WhiteboardCanvasProps {
 	roomId?: string; // 房间ID，用于保存视图状态
 
 	// 事件回调
-	onStrokeFinished?: (stroke: Omit<StrokeData, 'id'>) => void; // 笔画结束（存库）
+	onStrokeFinished?: (stroke: StrokeData) => void; // 笔画结束（存库）
 	onRealtimeDraw?: (data: DrawData) => void; // 实时绘制（广播）
 	onCursorChange?: (coords: { x: number; y: number }) => void; // 坐标更新
 	onScaleChange?: (scale: number) => void; // 缩放更新
@@ -53,9 +54,10 @@ interface WhiteboardCanvasProps {
 export interface WhiteboardCanvasHandle {
 	drawRemote: (data: DrawData) => void;
 	syncHistory: (strokes: StrokeData[]) => void;
-	undo: () => void;
+	undo: (userId?: string) => string | undefined; // 返回被撤销的笔画ID
 	redo: () => void;
 	addStroke: (stroke: StrokeData) => void;
+	removeStrokeById: (strokeId: string) => void;
 	clear: () => void;
 	resetView: () => void; // 重置缩放/平移
 	getViewState: () => { offset: { x: number; y: number }; scale: number };
@@ -237,21 +239,57 @@ export const WhiteboardCanvas = forwardRef<
 				});
 			},
 
-			undo: () => {
-				// 撤销最后一个完整的笔画
-				const lastStroke = strokeHistoryRef.current.pop();
-				if (!lastStroke) return;
+			undo: (userId?: string) => {
+				// 找出最新的笔画（按创建时间排序）
+				if (strokeHistoryRef.current.length === 0) return;
 
+				// 按创建时间排序，找出最新的笔画
+				const sortedStrokes = [...strokeHistoryRef.current].sort(
+					(a, b) =>
+						new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+				);
+
+				// 如果提供了userId，只撤销该用户的笔画
+				const latestStroke = userId
+					? sortedStrokes.find((s) => s.userId === userId)
+					: sortedStrokes[0];
+
+				if (!latestStroke) return; // 如果找不到该用户的笔画，则返回
+
+				const strokeId = latestStroke.id;
+
+				// 从本地历史中移除该笔画
+				strokeHistoryRef.current = strokeHistoryRef.current.filter(
+					(s) => s.id !== strokeId
+				);
+
+				// 重建drawingHistoryRef（像素历史）
+				drawingHistoryRef.current = [];
+				strokeHistoryRef.current.forEach((s) => {
+					const points = s.points;
+					for (let i = 1; i < points.length; i++) {
+						const p1 = points[i - 1];
+						const p2 = points[i];
+						drawingHistoryRef.current.push({
+							x: p2.x,
+							y: p2.y,
+							prevX: p1.x,
+							prevY: p1.y,
+							color: s.color,
+							size: s.size,
+							tool: s.tool,
+						});
+					}
+				});
+
+				// 重绘画布
 				const canvas = canvasRef.current;
 				const ctx = canvas?.getContext('2d');
 				if (!canvas || !ctx) return;
 
-				// 清除画布
 				clearCanvas(ctx, canvas);
-
-				// 重新绘制除了最后一个笔画外的所有笔画
-				strokeHistoryRef.current.forEach((stroke) => {
-					const points = stroke.points;
+				strokeHistoryRef.current.forEach((s) => {
+					const points = s.points;
 					if (points.length < 2) return;
 
 					ctx.save();
@@ -264,33 +302,16 @@ export const WhiteboardCanvas = forwardRef<
 						ctx.lineTo(points[i].x, points[i].y);
 					}
 
-					ctx.strokeStyle =
-						stroke.tool === 'eraser' ? CANVAS_BG_COLOR : stroke.color;
-					ctx.lineWidth = stroke.size;
+					ctx.strokeStyle = s.tool === 'eraser' ? CANVAS_BG_COLOR : s.color;
+					ctx.lineWidth = s.size;
 					ctx.lineCap = 'round';
 					ctx.lineJoin = 'round';
 					ctx.stroke();
 					ctx.restore();
 				});
 
-				// 更新drawingHistoryRef以保持同步
-				drawingHistoryRef.current = [];
-				strokeHistoryRef.current.forEach((stroke) => {
-					const points = stroke.points;
-					for (let i = 1; i < points.length; i++) {
-						const p1 = points[i - 1];
-						const p2 = points[i];
-						drawingHistoryRef.current.push({
-							x: p2.x,
-							y: p2.y,
-							prevX: p1.x,
-							prevY: p1.y,
-							color: stroke.color,
-							size: stroke.size,
-							tool: stroke.tool,
-						});
-					}
-				});
+				// 返回被撤销的笔画ID，供服务器同步使用
+				return strokeId;
 			},
 
 			redo: () => {
@@ -299,6 +320,9 @@ export const WhiteboardCanvas = forwardRef<
 			},
 
 			addStroke: (stroke: StrokeData) => {
+				console.log(
+					`尝试添加笔画ID: ${stroke.id}, 笔画点数: ${stroke.points.length}`
+				);
 				// 找到正确的插入位置，保持按创建时间排序
 				const insertIndex = strokeHistoryRef.current.findIndex(
 					(s) => new Date(s.createdAt) > new Date(stroke.createdAt)
@@ -306,9 +330,11 @@ export const WhiteboardCanvas = forwardRef<
 				if (insertIndex === -1) {
 					// 如果没有找到，说明应该插入到末尾
 					strokeHistoryRef.current.push(stroke);
+					console.log(`笔画ID: ${stroke.id} 已添加到末尾`);
 				} else {
 					// 插入到正确位置
 					strokeHistoryRef.current.splice(insertIndex, 0, stroke);
+					console.log(`笔画ID: ${stroke.id} 已插入到位置 ${insertIndex}`);
 				}
 
 				const canvas = canvasRef.current;
@@ -358,6 +384,70 @@ export const WhiteboardCanvas = forwardRef<
 							tool: s.tool,
 						});
 					}
+				});
+			},
+
+			removeStrokeById: (strokeId: string) => {
+				console.log(`尝试删除笔画ID: ${strokeId}`);
+				// 从笔画历史中按 id 删除指定笔画
+				const idx = strokeHistoryRef.current.findIndex(
+					(s) => s.id === strokeId
+				);
+				if (idx === -1) {
+					console.log(`笔画ID ${strokeId} 不存在或已删除`);
+					return; // 笔画不存在或已删除
+				}
+
+				console.log(
+					`成功删除笔画ID: ${strokeId}, 当前笔画总数: ${strokeHistoryRef.current.length}`
+				);
+				strokeHistoryRef.current.splice(idx, 1);
+
+				// 清空并重新构建 drawingHistoryRef（像素历史）
+				drawingHistoryRef.current = [];
+				strokeHistoryRef.current.forEach((s) => {
+					const points = s.points;
+					for (let i = 1; i < points.length; i++) {
+						const p1 = points[i - 1];
+						const p2 = points[i];
+						drawingHistoryRef.current.push({
+							x: p2.x,
+							y: p2.y,
+							prevX: p1.x,
+							prevY: p1.y,
+							color: s.color,
+							size: s.size,
+							tool: s.tool,
+						});
+					}
+				});
+
+				// 重绘画布
+				const canvas = canvasRef.current;
+				const ctx = canvas?.getContext('2d');
+				if (!canvas || !ctx) return;
+
+				clearCanvas(ctx, canvas);
+				strokeHistoryRef.current.forEach((s) => {
+					const points = s.points;
+					if (points.length < 2) return;
+
+					ctx.save();
+					ctx.translate(offsetRef.current.x, offsetRef.current.y);
+					ctx.scale(scaleRef.current, scaleRef.current);
+					ctx.beginPath();
+					ctx.moveTo(points[0].x, points[0].y);
+
+					for (let i = 1; i < points.length; i++) {
+						ctx.lineTo(points[i].x, points[i].y);
+					}
+
+					ctx.strokeStyle = s.tool === 'eraser' ? CANVAS_BG_COLOR : s.color;
+					ctx.lineWidth = s.size;
+					ctx.lineCap = 'round';
+					ctx.lineJoin = 'round';
+					ctx.stroke();
+					ctx.restore();
 				});
 			},
 
@@ -496,25 +586,46 @@ export const WhiteboardCanvas = forwardRef<
 					const rawPoints = currentStrokePointsRef.current;
 					const optimizedPoints = simplify(rawPoints, 1, true);
 
+					// 生成一个ID，确保本地和服务器使用相同的ID
+					const strokeId = crypto.randomUUID();
 					const strokeData: StrokeData = {
-						id: crypto.randomUUID(),
+						id: strokeId,
 						tool,
 						color,
 						size,
 						points: optimizedPoints,
 						createdAt: new Date(),
+						userId: user?.id?.toString() || 'anonymous',
 					};
+
+					console.log(
+						`创建新笔画，ID: ${strokeData.id}, 点数: ${optimizedPoints.length}`
+					);
 
 					// 保存到本地笔画历史
 					strokeHistoryRef.current.push(strokeData);
 
-					onStrokeFinished({
-						tool,
-						color,
-						size,
-						points: optimizedPoints,
-						createdAt: new Date(),
-					});
+					// 同时更新drawingHistoryRef，确保新笔画可以被正确撤销
+					for (let i = 1; i < optimizedPoints.length; i++) {
+						const p1 = optimizedPoints[i - 1];
+						const p2 = optimizedPoints[i];
+						drawingHistoryRef.current.push({
+							x: p2.x,
+							y: p2.y,
+							prevX: p1.x,
+							prevY: p1.y,
+							color: color,
+							size: size,
+							tool: tool,
+						});
+					}
+
+					console.log(
+						`笔画已保存到本地历史，当前笔画总数: ${strokeHistoryRef.current.length}`
+					);
+
+					// 传递笔画数据和ID给父组件，确保服务器使用相同的ID
+					onStrokeFinished(strokeData);
 				}
 				currentStrokePointsRef.current = [];
 			}

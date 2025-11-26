@@ -44,8 +44,8 @@ export function Register() {
 			) {
 				toast.success('注册成功，请登录');
 				navigate('/login');
-			} else if (response.error) {
-				const error = response.error as { message?: string };
+			} else if (response.error?.value) {
+				const error = response.error.value as { message?: string };
 				toast.error(error.message || '注册失败');
 			} else {
 				toast.error('注册失败');

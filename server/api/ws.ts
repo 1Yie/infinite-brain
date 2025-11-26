@@ -255,6 +255,31 @@ export const websocketRoutes = new Elysia({ prefix: '/ws' })
 							if (lastStroke.length > 0) {
 								strokeId = lastStroke[0]!.id;
 							}
+						} else {
+							// 如果客户端传递了strokeId，需要验证这个笔画是否属于当前用户
+							const strokeToCheck = await db
+								.select()
+								.from(strokes)
+								.where(
+									and(
+										eq(strokes.id, strokeId),
+										eq(strokes.roomId, roomId),
+										eq(strokes.isDeleted, false)
+									)
+								)
+								.limit(1);
+
+							// 如果笔画不存在或属于其他用户，则不允许撤销
+							if (
+								strokeToCheck.length === 0 ||
+								strokeToCheck[0]!.userId !== userId
+							) {
+								console.warn(
+									`用户 ${userId} 尝试撤销不属于自己的笔画ID: ${strokeId}`
+								);
+								// 直接返回，不发送任何消息，客户端会认为操作无效
+								return;
+							}
 						}
 
 						if (strokeId) {

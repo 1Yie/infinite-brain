@@ -7,6 +7,7 @@ export interface Room {
 	isPrivate?: boolean;
 	password?: string;
 	createdAt: Date | string | null;
+	creatorName?: string;
 }
 
 export const roomApi = {

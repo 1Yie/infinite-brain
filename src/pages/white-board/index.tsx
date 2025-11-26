@@ -102,13 +102,33 @@ export function Whiteboard({ roomId: roomIdProp }: { roomId?: string }) {
 				// WebSocket连接成功，如果还没有加载完canvas，也隐藏加载状态
 				setTimeout(() => setIsCanvasLoading(false), 1000);
 			} else if (message.type === 'undo') {
-				// 只有当不是自己触发的撤销时，才执行本地撤销
-				if (message.userId !== userId) {
-					canvasRef.current?.undo();
+				// 处理撤销消息：所有用户都需要删除指定笔画，保持状态同步
+				if (message.strokeId) {
+					console.log(
+						`收到撤销消息，删除笔画ID: ${message.strokeId}, 用户ID: ${message.userId}`
+					);
+					canvasRef.current?.removeStrokeById(message.strokeId);
+				} else {
+					console.log('收到撤销消息，但没有可撤销的笔画');
 				}
 			} else if (message.type === 'redo') {
-				// 重做时，服务器广播恢复的笔画数据，所有客户端都需要添加
+				// 处理重做消息：添加服务器广播的笔画数据
+				console.log(
+					`收到重做消息，笔画ID: ${message.data?.id}, 用户ID: ${message.userId}`
+				);
 				canvasRef.current?.addStroke(message.data as StrokeData);
+			} else if (message.type === 'stroke-finished') {
+				// 处理笔画完成消息：添加服务器广播的笔画数据
+				if (message.userId !== userId) {
+					console.log(
+						`收到其他用户的笔画完成消息，笔画ID: ${message.data?.id}, 用户ID: ${message.userId}`
+					);
+					canvasRef.current?.addStroke(message.data as StrokeData);
+				}
+			} else if (message.type === 'error') {
+				// 处理服务器发送的错误消息
+				console.error(`服务器错误: ${message.message}`);
+				// 不显示弹窗，只在控制台记录错误
 			}
 		});
 
@@ -116,11 +136,12 @@ export function Whiteboard({ roomId: roomIdProp }: { roomId?: string }) {
 	}, [userId, onMessage]);
 
 	const handleStrokeFinished = useCallback(
-		(stroke: Omit<StrokeData, 'id'>) => {
+		(stroke: StrokeData) => {
 			if (isConnected) {
+				// 直接传递笔画数据，不生成新的ID
 				sendStrokeFinish({
 					...stroke,
-					id: crypto.randomUUID(),
+					createdAt: stroke.createdAt || new Date(),
 				});
 			}
 		},
@@ -131,17 +152,21 @@ export function Whiteboard({ roomId: roomIdProp }: { roomId?: string }) {
 	const handleUndo = useCallback(() => {
 		if (!isConnected) return;
 
-		// 1. 本地 Canvas 撤销 (视觉反馈)
-		canvasRef.current?.undo();
-		// 2. 发送请求给后端 (逻辑撤销)
-		sendUndo();
-	}, [isConnected, sendUndo]);
+		// 1. 先执行本地撤销操作（立即视觉反馈），只撤销当前用户的笔画
+		const strokeId = canvasRef.current?.undo(userId || undefined);
+		// 2. 发送撤销请求给后端（服务器同步）
+		if (strokeId) {
+			sendUndo(strokeId);
+		} else {
+			sendUndo();
+		}
+	}, [isConnected, sendUndo, userId]);
 
 	// 处理重做
 	const handleRedo = useCallback(() => {
 		if (!isConnected) return;
 
-		// 发送重做请求给后端
+		// 只发送重做请求给后端，由服务器控制重做操作
 		sendRedo();
 	}, [isConnected, sendRedo]);
 
