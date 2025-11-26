@@ -1,13 +1,17 @@
 import React from 'react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Pen, Eraser, Undo2, Redo2, Plus } from 'lucide-react';
 
 interface WhiteboardToolbarProps {
-	tool: 'pen' | 'eraser';
-	setTool: (tool: 'pen' | 'eraser') => void;
+	currentTool: 'pen' | 'eraser';
+	setCurrentTool: (tool: 'pen' | 'eraser') => void;
 	currentColor: string;
 	setCurrentColor: (color: string) => void;
 	currentSize: number;
 	setCurrentSize: (size: number) => void;
 	handleUndo: () => void;
+	handleRedo: () => void;
 	isConnected: boolean;
 }
 
@@ -22,13 +26,14 @@ const COLORS = [
 ];
 
 export const WhiteboardToolbar: React.FC<WhiteboardToolbarProps> = ({
-	tool,
-	setTool,
+	currentTool: tool,
+	setCurrentTool: setTool,
 	currentColor,
 	setCurrentColor,
 	currentSize,
 	setCurrentSize,
 	handleUndo,
+	handleRedo,
 	isConnected,
 }) => {
 	return (
@@ -36,52 +41,22 @@ export const WhiteboardToolbar: React.FC<WhiteboardToolbarProps> = ({
 			<div className="flex items-center gap-6">
 				{/* 工具选择 */}
 				<div className="flex gap-1 rounded-lg bg-gray-100 p-1">
-					<button
+					<Button
+						variant={tool === 'pen' ? 'default' : 'ghost'}
 						onClick={() => setTool('pen')}
-						className={`rounded-md px-4 py-2 text-sm font-medium transition-all duration-200 ${
-							tool === 'pen'
-								? 'bg-white text-blue-600 shadow-sm'
-								: 'text-gray-600 hover:text-gray-900'
-						}`}
+						className="rounded-md px-4 py-2 text-sm font-medium transition-all duration-200"
 					>
-						<svg
-							className="mr-1.5 inline-block h-4 w-4"
-							fill="none"
-							stroke="currentColor"
-							viewBox="0 0 24 24"
-						>
-							<path
-								strokeLinecap="round"
-								strokeLinejoin="round"
-								strokeWidth={2}
-								d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
-							/>
-						</svg>
+						<Pen className="mr-1.5 h-4 w-4" />
 						画笔
-					</button>
-					<button
+					</Button>
+					<Button
+						variant={tool === 'eraser' ? 'default' : 'ghost'}
 						onClick={() => setTool('eraser')}
-						className={`rounded-md px-4 py-2 text-sm font-medium transition-all duration-200 ${
-							tool === 'eraser'
-								? 'bg-white text-blue-600 shadow-sm'
-								: 'text-gray-600 hover:text-gray-900'
-						}`}
+						className="rounded-md px-4 py-2 text-sm font-medium transition-all duration-200"
 					>
-						<svg
-							className="mr-1.5 inline-block h-4 w-4"
-							fill="none"
-							stroke="currentColor"
-							viewBox="0 0 24 24"
-						>
-							<path
-								strokeLinecap="round"
-								strokeLinejoin="round"
-								strokeWidth={2}
-								d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-							/>
-						</svg>
+						<Eraser className="mr-1.5 h-4 w-4" />
 						橡皮
-					</button>
+					</Button>
 				</div>
 
 				<div className="h-8 w-px bg-gray-300"></div>
@@ -108,12 +83,12 @@ export const WhiteboardToolbar: React.FC<WhiteboardToolbarProps> = ({
 									key={color}
 									onClick={() => setCurrentColor(color)}
 									title={`颜色: ${color}`}
-									className={`h-7 w-7 rounded-lg transition-all duration-200 ${
+									className={`size-7 rounded-lg transition-all duration-200 ${
 										colorClasses[color as keyof typeof colorClasses] || ''
 									} ${
 										currentColor === color
 											? 'scale-110 ring-2 ring-blue-500 ring-offset-2'
-											: 'opacity-80 hover:scale-105 hover:opacity-100'
+											: 'opacity-80'
 									}`}
 								/>
 							);
@@ -132,17 +107,7 @@ export const WhiteboardToolbar: React.FC<WhiteboardToolbarProps> = ({
 								className="pointer-events-none flex h-7 w-7 cursor-pointer items-center justify-center rounded-lg border-2 border-gray-300 transition-colors hover:border-gray-400"
 								style={{ backgroundColor: currentColor }}
 							>
-								<svg
-									className="h-4 w-4 text-white drop-shadow"
-									fill="currentColor"
-									viewBox="0 0 20 20"
-								>
-									<path
-										fillRule="evenodd"
-										d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z"
-										clipRule="evenodd"
-									/>
-								</svg>
+								<Plus className="h-4 w-4 text-white drop-shadow" />
 							</div>
 						</div>
 					</div>
@@ -164,13 +129,13 @@ export const WhiteboardToolbar: React.FC<WhiteboardToolbarProps> = ({
 						className="h-1.5 w-24 cursor-pointer appearance-none rounded-full bg-gray-200 accent-blue-500"
 						title={`画笔大小: ${currentSize}`}
 					/>
-					<input
+					<Input
 						type="number"
 						min="1"
 						max="50"
 						value={currentSize}
 						onChange={(e) => setCurrentSize(Number(e.target.value))}
-						className="w-14 rounded-lg border border-gray-300 px-2 py-1 text-center text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500 focus:outline-none"
+						className="w-18 text-center text-sm"
 						title="输入画笔大小"
 					/>
 				</div>
@@ -200,26 +165,26 @@ export const WhiteboardToolbar: React.FC<WhiteboardToolbarProps> = ({
         </button> */}
 
 				{/* 撤销按钮 */}
-				<button
+				<Button
+					variant="secondary"
 					onClick={handleUndo}
-					className="flex items-center gap-2 rounded-lg bg-gray-200 px-4 py-2 text-sm font-medium text-gray-800 transition-all duration-200 hover:bg-gray-300"
 					disabled={!isConnected}
+					className="flex items-center gap-2"
 				>
-					<svg
-						className="h-4 w-4"
-						fill="none"
-						stroke="currentColor"
-						viewBox="0 0 24 24"
-					>
-						<path
-							strokeLinecap="round"
-							strokeLinejoin="round"
-							strokeWidth={2}
-							d="M7 16l-4-4m0 0l4-4m-4 4h18"
-						/>
-					</svg>
+					<Undo2 className="h-4 w-4" />
 					撤销
-				</button>
+				</Button>
+
+				{/* 撤回按钮 */}
+				<Button
+					variant="secondary"
+					onClick={handleRedo}
+					disabled={!isConnected}
+					className="flex items-center gap-2"
+				>
+					<Redo2 className="h-4 w-4" />
+					撤回
+				</Button>
 			</div>
 		</div>
 	);

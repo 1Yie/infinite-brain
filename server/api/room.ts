@@ -1,6 +1,6 @@
 import { Elysia, t } from 'elysia';
 import { db } from '../db';
-import { rooms, strokes } from '../db/schema';
+import { rooms, strokes, userStats } from '../db/schema';
 import { eq, desc } from 'drizzle-orm';
 import { auth } from '../utils/verify';
 
@@ -29,6 +29,8 @@ export const roomRoutes = new Elysia({ prefix: '/rooms' })
 					id: roomId,
 					name: body.name,
 					ownerId: user.id.toString(),
+					isPrivate: body.isPrivate || false,
+					password: body.password || null,
 					createdAt: new Date(),
 				});
 				return { success: true, roomId, name: body.name };
@@ -40,6 +42,8 @@ export const roomRoutes = new Elysia({ prefix: '/rooms' })
 		{
 			body: t.Object({
 				name: t.String({ minLength: 1, maxLength: 50 }),
+				isPrivate: t.Optional(t.Boolean()),
+				password: t.Optional(t.String()),
 			}),
 		}
 	)
@@ -72,4 +76,74 @@ export const roomRoutes = new Elysia({ prefix: '/rooms' })
 				id: t.String(),
 			}),
 		}
-	);
+	)
+	.post(
+		'/join',
+		async ({ body }) => {
+			try {
+				const room = await db.query.rooms.findFirst({
+					where: eq(rooms.id, body.roomId),
+				});
+
+				if (!room) {
+					return { success: false, error: '房间不存在' };
+				}
+
+				if (room.isPrivate) {
+					if (!body.password || room.password !== body.password) {
+						return { success: false, error: '密码错误' };
+					}
+				}
+
+				return { success: true, room };
+			} catch (e) {
+				console.error(e);
+				return { success: false, error: '加入房间失败' };
+			}
+		},
+		{
+			body: t.Object({
+				roomId: t.String(),
+				password: t.Optional(t.String()),
+			}),
+		}
+	)
+
+	// 获取用户统计数据
+	.get('/stats', async ({ user }) => {
+		try {
+			const userId = user.id.toString();
+			const stats = await db
+				.select()
+				.from(userStats)
+				.where(eq(userStats.userId, userId))
+				.limit(1);
+
+			if (stats.length > 0) {
+				const stat = stats[0]!;
+				return {
+					success: true,
+					data: {
+						totalStrokes: stat.totalStrokes || 0,
+						todayStrokes: stat.todayStrokes || 0,
+						totalPixels: stat.totalPixels || 0,
+						todayPixels: stat.todayPixels || 0,
+					},
+				};
+			} else {
+				// 如果没有统计记录，返回默认值
+				return {
+					success: true,
+					data: {
+						totalStrokes: 0,
+						todayStrokes: 0,
+						totalPixels: 0,
+						todayPixels: 0,
+					},
+				};
+			}
+		} catch (e) {
+			console.error('获取统计数据失败:', e);
+			return { success: false, error: '获取统计数据失败' };
+		}
+	});

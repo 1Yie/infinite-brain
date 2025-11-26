@@ -1,11 +1,11 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { WhiteboardCanvas } from '../white-board/whiteboard-canvas';
-import { WhiteboardToolbar } from '../white-board/whiteboard-toolbar';
+import { WhiteboardCanvas } from '../../pages/white-board/whiteboard-canvas';
+import { WhiteboardToolbar } from '../../pages/white-board/whiteboard-toolbar';
 import type {
 	WhiteboardCanvasHandle,
 	DrawData,
-} from '../white-board/whiteboard-canvas';
+} from '../../pages/white-board/whiteboard-canvas';
 import { useWebSocket } from '../../hooks/use-websocket';
 import type { StrokeData } from '../../types/whiteboard';
 import { DynamicIcon } from 'lucide-react/dynamic';
@@ -172,6 +172,7 @@ export function HomePage() {
 							tool={tool}
 							color={color}
 							size={size}
+							roomId={roomId}
 							readOnly={!isConnected}
 							onStrokeFinished={handleFinish}
 							onRealtimeDraw={sendDraw}

@@ -45,6 +45,15 @@ export const wsApi = {
 	},
 
 	/**
+	 * 辅助函数：发送重做操作
+	 */
+	sendRedo: (connection: BoardSocket) => {
+		connection.send({
+			type: 'redo',
+		});
+	},
+
+	/**
 	 * 辅助函数：发送光标位置
 	 */
 	sendCursor: (connection: BoardSocket, data: SingleMessage['data']) => {

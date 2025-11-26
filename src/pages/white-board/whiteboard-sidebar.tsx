@@ -1,9 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { roomApi } from '../../api/room';
+import { Button } from '@/components/ui/button';
+import { Spinner } from '@/components/ui/spinner';
 
 interface WhiteboardSidebarProps {
 	isConnected: boolean;
+	isConnecting: boolean;
 	user: { name: string } | null;
 	userCount: number;
 	scale: number;
@@ -13,6 +16,7 @@ interface WhiteboardSidebarProps {
 
 export const WhiteboardSidebar: React.FC<WhiteboardSidebarProps> = ({
 	isConnected,
+	isConnecting,
 	userCount,
 	scale,
 	coords,
@@ -63,15 +67,24 @@ export const WhiteboardSidebar: React.FC<WhiteboardSidebarProps> = ({
 				<div className="flex items-center gap-3">
 					<div
 						className={`h-2.5 w-2.5 rounded-full ${
-							isConnected ? 'animate-pulse bg-emerald-500' : 'bg-red-500'
+							isConnected
+								? 'animate-pulse bg-emerald-500'
+								: isConnecting
+									? 'animate-pulse bg-yellow-500'
+									: 'bg-gray-400'
 						}`}
 					/>
 					<span
-						className={`text-sm font-medium ${
-							isConnected ? 'text-emerald-600' : 'text-red-600'
+						className={`flex items-center gap-2 text-sm font-medium ${
+							isConnected
+								? 'text-emerald-600'
+								: isConnecting
+									? 'text-yellow-600'
+									: 'text-gray-500'
 						}`}
 					>
-						{isConnected ? '已连接' : '连接已断开'}
+						{isConnecting && <Spinner className="h-3 w-3" />}
+						{isConnecting ? '正在连接...' : isConnected ? '已连接' : '等待连接'}
 					</span>
 				</div>
 
@@ -139,12 +152,13 @@ export const WhiteboardSidebar: React.FC<WhiteboardSidebarProps> = ({
 
 			{/* 返回房间列表 */}
 			<div className="px-6 pb-4">
-				<button
+				<Button
 					onClick={() => navigate('/room')}
-					className="w-full rounded-lg bg-gray-100 px-4 py-2.5 text-sm font-medium text-gray-700 transition-colors duration-200 hover:bg-gray-200"
+					variant="outline"
+					className="w-full"
 				>
 					← 返回房间列表
-				</button>
+				</Button>
 			</div>
 		</div>
 	);

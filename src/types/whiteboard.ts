@@ -6,4 +6,5 @@ export interface StrokeData {
 	color: string;
 	size: number;
 	points: { x: number; y: number }[];
+	createdAt: Date;
 }

@@ -1,39 +1,107 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { roomApi, type Room } from '../../api/room';
 import { useAuth } from '../../context/auth-context';
+import {
+	AlertDialog,
+	AlertDialogClose,
+	AlertDialogDescription,
+	AlertDialogPopup,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
 
 export function RoomPage() {
 	const { user, logout } = useAuth();
 	const [rooms, setRooms] = useState<Room[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [newRoomName, setNewRoomName] = useState('');
+	const [isPrivateRoom, setIsPrivateRoom] = useState(false);
+	const [roomPassword, setRoomPassword] = useState('');
 	const [isCreating, setIsCreating] = useState(false);
 	const [showUserMenu, setShowUserMenu] = useState(false);
 	const menuRef = useRef<HTMLDivElement>(null);
+	const [alertMessage, setAlertMessage] = useState('');
+	const [isAlertOpen, setIsAlertOpen] = useState(false);
+	const [isConfirmDeleteOpen, setIsConfirmDeleteOpen] = useState(false);
+	const [roomToDelete, setRoomToDelete] = useState<string | null>(null);
+	const [roomNameToDelete, setRoomNameToDelete] = useState<string>('');
+	const [isJoinDialogOpen, setIsJoinDialogOpen] = useState(false);
+	const [joinRoomId, setJoinRoomId] = useState<string>('');
+	const [joinPassword, setJoinPassword] = useState('');
+	const [userStats, setUserStats] = useState({
+		totalStrokes: 0,
+		todayStrokes: 0,
+		totalPixels: 0,
+		todayPixels: 0,
+	});
 
-	const fetchRooms = async () => {
+	const fetchStats = useCallback(async () => {
+		try {
+			const stats = await roomApi.getUserStats();
+			setUserStats(stats);
+		} catch (error) {
+			console.warn('获取统计数据失败:', error);
+		}
+	}, []);
+
+	const fetchRooms = useCallback(async () => {
 		try {
 			setLoading(true);
 			const data = await roomApi.getRooms();
 			setRooms(data);
+
+			// 获取用户统计数据
+			await fetchStats();
 		} finally {
 			setLoading(false);
 		}
-	};
+	}, [fetchStats]);
 
 	useEffect(() => {
 		fetchRooms();
 	}, []);
 
+	useEffect(() => {
+		const handleClickOutside = (event: MouseEvent) => {
+			if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+				setShowUserMenu(false);
+			}
+		};
+
+		if (showUserMenu) {
+			document.addEventListener('mousedown', handleClickOutside);
+		}
+
+		return () => {
+			document.removeEventListener('mousedown', handleClickOutside);
+		};
+	}, [showUserMenu]);
+
 	const handleCreateRoom = async (e: React.FormEvent) => {
 		e.preventDefault();
 		if (!newRoomName.trim()) return;
 
+		if (isPrivateRoom && !roomPassword.trim()) {
+			setAlertMessage('请输入房间密码');
+			setIsAlertOpen(true);
+			return;
+		}
+
 		try {
 			setIsCreating(true);
-			const { roomId } = await roomApi.createRoom(newRoomName);
+			const { roomId } = await roomApi.createRoom(
+				newRoomName,
+				isPrivateRoom,
+				isPrivateRoom ? roomPassword : undefined
+			);
 			await fetchRooms();
 			setNewRoomName('');
+			setIsPrivateRoom(false);
+			setRoomPassword('');
 			window.location.href = `/room/${roomId}`;
 		} finally {
 			setIsCreating(false);
@@ -41,30 +109,58 @@ export function RoomPage() {
 	};
 
 	const handleEnterRoom = (roomId: string) => {
-		window.location.href = `/room/${roomId}`;
+		const room = rooms.find((r) => r.id === roomId);
+		if (room?.isPrivate) {
+			setJoinRoomId(roomId);
+			setIsJoinDialogOpen(true);
+		} else {
+			window.location.href = `/room/${roomId}`;
+		}
+	};
+
+	const handleJoinRoom = async () => {
+		try {
+			await roomApi.joinRoom(joinRoomId, joinPassword);
+			sessionStorage.setItem(`room_auth_${joinRoomId}`, 'true');
+			setIsJoinDialogOpen(false);
+			setJoinPassword('');
+			window.location.href = `/room/${joinRoomId}`;
+		} catch (error) {
+			setAlertMessage(error instanceof Error ? error.message : '加入房间失败');
+			setIsAlertOpen(true);
+		}
 	};
 
 	const handleDeleteRoom = async (e: React.MouseEvent, roomId: string) => {
 		e.stopPropagation();
 
 		if (roomId === 'default-room') {
-			alert('默认房间不可删除');
+			setAlertMessage('默认房间不可删除');
+			setIsAlertOpen(true);
 			return;
 		}
 
-		if (!confirm('确定删除房间？')) return;
-
-		await roomApi.deleteRoom(roomId);
-		setRooms((prev) => prev.filter((r) => r.id !== roomId));
+		setRoomToDelete(roomId);
+		setRoomNameToDelete(rooms.find((r) => r.id === roomId)?.name || '');
+		setIsConfirmDeleteOpen(true);
 	};
 
 	const handleLogout = async () => {
 		await logout();
 	};
 
+	const confirmDeleteRoom = async () => {
+		if (roomToDelete) {
+			await roomApi.deleteRoom(roomToDelete);
+			setRooms((prev) => prev.filter((r) => r.id !== roomToDelete));
+			setRoomToDelete(null);
+		}
+		setIsConfirmDeleteOpen(false);
+	};
+
 	const renderRoomCreatedAt = (room: Room) => {
 		if (room.id === 'default-room') {
-			return <span className="text-xs text-zinc-500">默认房间</span>;
+			return <span className="text-xs text-zinc-500">系统默认</span>;
 		}
 
 		return new Date(room.createdAt!).toLocaleDateString('zh-CN', {
@@ -97,11 +193,16 @@ export function RoomPage() {
 									/>
 								</svg>
 							</div>
-							<div>
+							<div
+								onClick={() => (window.location.href = '/')}
+								className="cursor-pointer"
+							>
 								<h1 className="text-lg font-bold text-zinc-900">
 									Infinite Board
 								</h1>
-								<p className="text-xs text-zinc-500">协作白板</p>
+								<p className="text-xs tracking-widest text-zinc-500">
+									无限画布
+								</p>
 							</div>
 						</div>
 					</div>
@@ -113,14 +214,32 @@ export function RoomPage() {
 								<div className="flex items-center justify-between">
 									<span className="text-sm text-zinc-600">我的房间</span>
 									<span className="text-lg font-bold text-zinc-900">
-										{rooms.length}
+										{rooms.filter((room) => room.id !== 'default-room').length}
 									</span>
 								</div>
 							</div>
 							<div className="rounded-lg bg-zinc-50 p-4">
 								<div className="flex items-center justify-between">
-									<span className="text-sm text-zinc-600">今日创作</span>
-									<span className="text-lg font-bold text-zinc-900">0</span>
+									<span className="text-sm text-zinc-600">今日笔画</span>
+									<span className="text-lg font-bold text-zinc-900">
+										{userStats.todayStrokes}
+									</span>
+								</div>
+							</div>
+							<div className="rounded-lg bg-zinc-50 p-4">
+								<div className="flex items-center justify-between">
+									<span className="text-sm text-zinc-600">总共笔画</span>
+									<span className="text-lg font-bold text-zinc-900">
+										{userStats.totalStrokes}
+									</span>
+								</div>
+							</div>
+							<div className="rounded-lg bg-zinc-50 p-4">
+								<div className="flex items-center justify-between">
+									<span className="text-sm text-zinc-600">总共像素</span>
+									<span className="text-lg font-bold text-zinc-900">
+										{userStats.totalPixels.toLocaleString()}
+									</span>
 								</div>
 							</div>
 						</div>
@@ -169,7 +288,10 @@ export function RoomPage() {
 											: 'pointer-events-none translate-y-2 scale-95 opacity-0'
 									}`}
 								>
-									<button className="flex w-full items-center gap-3 border-b border-zinc-100 px-4 py-3 text-left text-sm font-medium text-zinc-700 transition-colors duration-150 hover:bg-zinc-50">
+									<Button
+										variant="ghost"
+										className="w-full justify-start rounded-none border-b border-zinc-100 py-3"
+									>
 										<svg
 											className="h-4 w-4 text-zinc-500"
 											fill="none"
@@ -190,10 +312,11 @@ export function RoomPage() {
 											/>
 										</svg>
 										设定
-									</button>
-									<button
+									</Button>
+									<Button
 										onClick={handleLogout}
-										className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-medium text-red-600 transition-colors duration-150 hover:bg-red-50"
+										variant="ghost"
+										className="w-full justify-start rounded-none py-3 text-red-600 hover:bg-red-50"
 									>
 										<svg
 											className="h-4 w-4"
@@ -209,7 +332,7 @@ export function RoomPage() {
 											/>
 										</svg>
 										退出登录
-									</button>
+									</Button>
 								</div>
 							</div>
 						</div>
@@ -233,28 +356,60 @@ export function RoomPage() {
 						<h3 className="mb-4 text-lg font-semibold text-zinc-900">
 							新建房间
 						</h3>
-						<div className="flex gap-3">
-							<input
+						<div className="space-y-4">
+							<Input
 								type="text"
 								placeholder="输入房间名称..."
 								value={newRoomName}
 								onChange={(e) => setNewRoomName(e.target.value)}
 								disabled={isCreating}
-								className="flex-1 rounded-lg border border-zinc-300 px-4 py-2.5 text-zinc-900 placeholder-zinc-400 focus:border-zinc-900 focus:ring-2 focus:ring-zinc-900/20 focus:outline-none disabled:bg-zinc-50 disabled:text-zinc-500"
 								onKeyDown={(e) => {
-									if (e.key === 'Enter') {
+									if (e.key === 'Enter' && !isPrivateRoom) {
 										handleCreateRoom(e);
 									}
 								}}
 							/>
-							<button
+							<div className="flex items-center space-x-2">
+								<Checkbox
+									id="private-room"
+									checked={isPrivateRoom}
+									onCheckedChange={(checked) =>
+										setIsPrivateRoom(checked as boolean)
+									}
+								/>
+								<label
+									htmlFor="private-room"
+									className="text-sm leading-none font-medium peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+								>
+									私密房间
+								</label>
+							</div>
+							{isPrivateRoom && (
+								<Input
+									type="password"
+									placeholder="输入房间密码..."
+									value={roomPassword}
+									onChange={(e) => setRoomPassword(e.target.value)}
+									disabled={isCreating}
+									onKeyDown={(e) => {
+										if (e.key === 'Enter') {
+											handleCreateRoom(e);
+										}
+									}}
+								/>
+							)}
+							<Button
 								type="button"
 								onClick={handleCreateRoom}
-								disabled={isCreating || !newRoomName.trim()}
-								className="rounded-lg bg-zinc-900 px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
+								disabled={
+									isCreating ||
+									!newRoomName.trim() ||
+									(isPrivateRoom && !roomPassword.trim())
+								}
+								className="w-full"
 							>
 								{isCreating ? '创建中...' : '创建房间'}
-							</button>
+							</Button>
 						</div>
 					</div>
 
@@ -301,12 +456,36 @@ export function RoomPage() {
 									<div
 										key={room.id}
 										onClick={() => handleEnterRoom(room.id)}
-										className="group cursor-pointer rounded-xl border border-zinc-200 bg-white p-5 transition-all hover:border-zinc-400 hover:shadow-md"
+										className={`group cursor-pointer rounded-xl border bg-white p-5 transition-all hover:border-zinc-400 hover:shadow-md ${
+											room.id === 'default-room'
+												? 'border-zinc-300 bg-zinc-50/50'
+												: 'border-zinc-200'
+										}`}
 									>
 										<div className="mb-3 flex items-start justify-between">
 											<div className="min-w-0 flex-1">
-												<h4 className="truncate text-base font-semibold text-zinc-900 transition-colors group-hover:text-zinc-700">
+												<h4 className="flex items-center gap-2 truncate text-base font-semibold text-zinc-900 transition-colors group-hover:text-zinc-700">
 													{room.name}
+													{room.isPrivate && (
+														<svg
+															className="h-4 w-4 shrink-0 text-zinc-500"
+															fill="none"
+															stroke="currentColor"
+															viewBox="0 0 24 24"
+														>
+															<path
+																strokeLinecap="round"
+																strokeLinejoin="round"
+																strokeWidth={2}
+																d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+															/>
+														</svg>
+													)}
+													{room.id === 'default-room' && (
+														<span className="inline-flex items-center rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-600">
+															默认
+														</span>
+													)}
 												</h4>
 												<p className="mt-1.5 flex items-center gap-1.5 text-xs text-zinc-500">
 													<svg
@@ -361,6 +540,79 @@ export function RoomPage() {
 					</div>
 				</div>
 			</main>
+
+			{/* Alert Dialog for default room */}
+			<AlertDialog open={isAlertOpen} onOpenChange={setIsAlertOpen}>
+				<AlertDialogPopup>
+					<AlertDialogHeader>
+						<AlertDialogTitle>提示</AlertDialogTitle>
+						<AlertDialogDescription>{alertMessage}</AlertDialogDescription>
+					</AlertDialogHeader>
+					<AlertDialogFooter>
+						<AlertDialogClose>
+							<Button>确定</Button>
+						</AlertDialogClose>
+					</AlertDialogFooter>
+				</AlertDialogPopup>
+			</AlertDialog>
+
+			{/* Confirm Delete Dialog */}
+			<AlertDialog
+				open={isConfirmDeleteOpen}
+				onOpenChange={setIsConfirmDeleteOpen}
+			>
+				<AlertDialogPopup>
+					<AlertDialogHeader>
+						<AlertDialogTitle>确认删除</AlertDialogTitle>
+						<AlertDialogDescription>
+							确认删除 {roomNameToDelete} ？
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					<AlertDialogFooter>
+						<AlertDialogClose>
+							<Button variant="outline">取消</Button>
+						</AlertDialogClose>
+						<Button
+							onClick={confirmDeleteRoom}
+							variant="destructive"
+							className="ml-2"
+						>
+							确定
+						</Button>
+					</AlertDialogFooter>
+				</AlertDialogPopup>
+			</AlertDialog>
+
+			{/* Join Room Dialog */}
+			<AlertDialog open={isJoinDialogOpen} onOpenChange={setIsJoinDialogOpen}>
+				<AlertDialogPopup>
+					<AlertDialogHeader>
+						<AlertDialogTitle>加入私密房间</AlertDialogTitle>
+						<AlertDialogDescription>请输入房间密码</AlertDialogDescription>
+					</AlertDialogHeader>
+					<div className="px-6 py-4">
+						<Input
+							type="password"
+							placeholder="输入密码..."
+							value={joinPassword}
+							onChange={(e) => setJoinPassword(e.target.value)}
+							onKeyDown={(e) => {
+								if (e.key === 'Enter') {
+									handleJoinRoom();
+								}
+							}}
+						/>
+					</div>
+					<AlertDialogFooter>
+						<AlertDialogClose>
+							<Button variant="outline">取消</Button>
+						</AlertDialogClose>
+						<Button onClick={handleJoinRoom} className="ml-2">
+							加入房间
+						</Button>
+					</AlertDialogFooter>
+				</AlertDialogPopup>
+			</AlertDialog>
 		</div>
 	);
 }

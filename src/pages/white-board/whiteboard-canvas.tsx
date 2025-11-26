@@ -7,8 +7,9 @@ import {
 	forwardRef,
 } from 'react';
 import simplify from 'simplify-js';
+import { useAuth } from '../../context/auth-context';
+import { viewStateApi } from '../../api/view-state';
 
-// --- 类型定义 ---
 export interface Point {
 	x: number;
 	y: number;
@@ -30,6 +31,7 @@ export interface StrokeData {
 	color: string;
 	size: number;
 	points: Point[];
+	createdAt: Date;
 }
 
 interface WhiteboardCanvasProps {
@@ -38,6 +40,7 @@ interface WhiteboardCanvasProps {
 	color: string;
 	size: number;
 	readOnly?: boolean; // 是否只读
+	roomId?: string; // 房间ID，用于保存视图状态
 
 	// 事件回调
 	onStrokeFinished?: (stroke: Omit<StrokeData, 'id'>) => void; // 笔画结束（存库）
@@ -51,8 +54,12 @@ export interface WhiteboardCanvasHandle {
 	drawRemote: (data: DrawData) => void;
 	syncHistory: (strokes: StrokeData[]) => void;
 	undo: () => void;
+	redo: () => void;
+	addStroke: (stroke: StrokeData) => void;
 	clear: () => void;
 	resetView: () => void; // 重置缩放/平移
+	getViewState: () => { offset: { x: number; y: number }; scale: number };
+	setViewState: (offset: { x: number; y: number }, scale: number) => void;
 }
 
 const CANVAS_BG_COLOR = '#f3f4f6';
@@ -67,6 +74,7 @@ export const WhiteboardCanvas = forwardRef<
 			color,
 			size,
 			readOnly = false,
+			roomId = 'default',
 			onStrokeFinished,
 			onRealtimeDraw,
 			onCursorChange,
@@ -77,25 +85,55 @@ export const WhiteboardCanvas = forwardRef<
 		const canvasRef = useRef<HTMLCanvasElement>(null);
 		const customCursorRef = useRef<HTMLDivElement>(null);
 
-		// --- 内部状态 ---
+		// 尝试获取认证状态，如果没有AuthProvider则使用null
+		let user = null;
+		try {
+			const auth = useAuth();
+			user = auth.user;
+		} catch (error) {
+			// AuthProvider不存在，使用null
+			console.warn('AuthProvider not available, using anonymous mode: ', error);
+		}
+
 		const [isDrawing, setIsDrawing] = useState(false);
 		const [isDragging, setIsDragging] = useState(false);
 		const [isHovering, setIsHovering] = useState(false);
 
-		// 视图状态 (为了性能，主要逻辑依赖 Refs，State 用于触发重绘或 UI 更新)
 		const [scale, setScale] = useState(1);
 		const offsetRef = useRef({ x: 0, y: 0 });
 		const scaleRef = useRef(1);
 
 		// 数据记录
 		const drawingHistoryRef = useRef<DrawData[]>([]); // 本地渲染历史 (像素点)
+		const strokeHistoryRef = useRef<StrokeData[]>([]); // 笔画历史 (完整的笔画)
 		const currentStrokePointsRef = useRef<{ x: number; y: number }[]>([]); // 当前笔画原始点
 		const lastPointRef = useRef<Point | null>(null);
 		const lastDragPointRef = useRef<Point | null>(null);
+		const getViewStateKey = useCallback(
+			() => `whiteboard-view-state-${roomId}`,
+			[roomId]
+		);
 
-		// --- 核心方法 ---
+		// 保存视图状态的函数
+		const saveViewState = useCallback(async () => {
+			const viewState = {
+				offset: offsetRef.current,
+				scale: scaleRef.current,
+			};
 
-		// 1. 清空画布
+			// 总是保存到localStorage作为备份
+			localStorage.setItem(getViewStateKey(), JSON.stringify(viewState));
+
+			// 如果用户已登录，同时保存到服务器
+			if (user) {
+				try {
+					await viewStateApi.saveViewState(roomId, viewState);
+				} catch (error) {
+					console.warn('保存视图状态到服务器失败:', error);
+				}
+			}
+		}, [getViewStateKey, roomId, user]);
+
 		const clearCanvas = useCallback(
 			(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) => {
 				ctx.save();
@@ -107,7 +145,6 @@ export const WhiteboardCanvas = forwardRef<
 			[]
 		);
 
-		// 2. 重绘历史 (用于缩放/平移/撤销)
 		const redrawHistory = useCallback((ctx: CanvasRenderingContext2D) => {
 			const history = drawingHistoryRef.current;
 			if (history.length === 0) return;
@@ -132,9 +169,7 @@ export const WhiteboardCanvas = forwardRef<
 			ctx.restore();
 		}, []);
 
-		// 3. 暴露给父组件的方法
 		useImperativeHandle(ref, () => ({
-			// 远程实时绘制
 			drawRemote: (data: DrawData) => {
 				const canvas = canvasRef.current;
 				const ctx = canvas?.getContext('2d');
@@ -154,11 +189,9 @@ export const WhiteboardCanvas = forwardRef<
 				ctx.stroke();
 				ctx.restore();
 
-				// 加入本地历史以支持缩放重绘
 				drawingHistoryRef.current.push(data);
 			},
 
-			// 同步完整历史 (数据库加载)
 			syncHistory: (strokes: StrokeData[]) => {
 				const canvas = canvasRef.current;
 				const ctx = canvas?.getContext('2d');
@@ -166,12 +199,12 @@ export const WhiteboardCanvas = forwardRef<
 
 				clearCanvas(ctx, canvas);
 				drawingHistoryRef.current = [];
+				strokeHistoryRef.current = strokes;
 
 				strokes.forEach((stroke) => {
 					const points = stroke.points;
 					if (points.length < 2) return;
 
-					// 绘制到 Canvas
 					ctx.save();
 					ctx.translate(offsetRef.current.x, offsetRef.current.y);
 					ctx.scale(scaleRef.current, scaleRef.current);
@@ -183,7 +216,6 @@ export const WhiteboardCanvas = forwardRef<
 						const p2 = points[i];
 						ctx.lineTo(p2.x, p2.y);
 
-						// 拆解回 DrawData 存入本地历史
 						drawingHistoryRef.current.push({
 							x: p2.x,
 							y: p2.y,
@@ -205,21 +237,128 @@ export const WhiteboardCanvas = forwardRef<
 				});
 			},
 
-			// 撤销
 			undo: () => {
-				// 这里的 undo 是粗略实现 (基于点的)，更好的 undo 是基于 stroke 的
-				// 简单实现：移除最后一段绘制数据 (实际生产中通常需要移除一整笔)
-				// 建议父组件控制 History Stack，这里只负责渲染
-				// 但为了兼容现有逻辑：
-				const lastStroke = drawingHistoryRef.current.pop();
+				// 撤销最后一个完整的笔画
+				const lastStroke = strokeHistoryRef.current.pop();
 				if (!lastStroke) return;
 
 				const canvas = canvasRef.current;
 				const ctx = canvas?.getContext('2d');
-				if (canvas && ctx) {
-					clearCanvas(ctx, canvas);
-					redrawHistory(ctx);
+				if (!canvas || !ctx) return;
+
+				// 清除画布
+				clearCanvas(ctx, canvas);
+
+				// 重新绘制除了最后一个笔画外的所有笔画
+				strokeHistoryRef.current.forEach((stroke) => {
+					const points = stroke.points;
+					if (points.length < 2) return;
+
+					ctx.save();
+					ctx.translate(offsetRef.current.x, offsetRef.current.y);
+					ctx.scale(scaleRef.current, scaleRef.current);
+					ctx.beginPath();
+					ctx.moveTo(points[0].x, points[0].y);
+
+					for (let i = 1; i < points.length; i++) {
+						ctx.lineTo(points[i].x, points[i].y);
+					}
+
+					ctx.strokeStyle =
+						stroke.tool === 'eraser' ? CANVAS_BG_COLOR : stroke.color;
+					ctx.lineWidth = stroke.size;
+					ctx.lineCap = 'round';
+					ctx.lineJoin = 'round';
+					ctx.stroke();
+					ctx.restore();
+				});
+
+				// 更新drawingHistoryRef以保持同步
+				drawingHistoryRef.current = [];
+				strokeHistoryRef.current.forEach((stroke) => {
+					const points = stroke.points;
+					for (let i = 1; i < points.length; i++) {
+						const p1 = points[i - 1];
+						const p2 = points[i];
+						drawingHistoryRef.current.push({
+							x: p2.x,
+							y: p2.y,
+							prevX: p1.x,
+							prevY: p1.y,
+							color: stroke.color,
+							size: stroke.size,
+							tool: stroke.tool,
+						});
+					}
+				});
+			},
+
+			redo: () => {
+				// 重做最后一个撤销的笔画（由服务器处理）
+				// 不需要本地逻辑，服务器会广播重做的数据
+			},
+
+			addStroke: (stroke: StrokeData) => {
+				// 找到正确的插入位置，保持按创建时间排序
+				const insertIndex = strokeHistoryRef.current.findIndex(
+					(s) => new Date(s.createdAt) > new Date(stroke.createdAt)
+				);
+				if (insertIndex === -1) {
+					// 如果没有找到，说明应该插入到末尾
+					strokeHistoryRef.current.push(stroke);
+				} else {
+					// 插入到正确位置
+					strokeHistoryRef.current.splice(insertIndex, 0, stroke);
 				}
+
+				const canvas = canvasRef.current;
+				const ctx = canvas?.getContext('2d');
+				if (!canvas || !ctx) return;
+
+				// 清除画布
+				clearCanvas(ctx, canvas);
+
+				// 重新绘制所有笔画
+				strokeHistoryRef.current.forEach((s) => {
+					const points = s.points;
+					if (points.length < 2) return;
+
+					ctx.save();
+					ctx.translate(offsetRef.current.x, offsetRef.current.y);
+					ctx.scale(scaleRef.current, scaleRef.current);
+					ctx.beginPath();
+					ctx.moveTo(points[0].x, points[0].y);
+
+					for (let i = 1; i < points.length; i++) {
+						ctx.lineTo(points[i].x, points[i].y);
+					}
+
+					ctx.strokeStyle = s.tool === 'eraser' ? CANVAS_BG_COLOR : s.color;
+					ctx.lineWidth = s.size;
+					ctx.lineCap = 'round';
+					ctx.lineJoin = 'round';
+					ctx.stroke();
+					ctx.restore();
+				});
+
+				// 更新drawingHistoryRef以保持同步
+				drawingHistoryRef.current = [];
+				strokeHistoryRef.current.forEach((s) => {
+					const points = s.points;
+					for (let i = 1; i < points.length; i++) {
+						const p1 = points[i - 1];
+						const p2 = points[i];
+						drawingHistoryRef.current.push({
+							x: p2.x,
+							y: p2.y,
+							prevX: p1.x,
+							prevY: p1.y,
+							color: s.color,
+							size: s.size,
+							tool: s.tool,
+						});
+					}
+				});
 			},
 
 			clear: () => {
@@ -235,7 +374,25 @@ export const WhiteboardCanvas = forwardRef<
 				offsetRef.current = { x: 0, y: 0 };
 				scaleRef.current = 1;
 				setScale(1);
-				// 触发重绘
+
+				const canvas = canvasRef.current;
+				const ctx = canvas?.getContext('2d');
+				if (canvas && ctx) {
+					clearCanvas(ctx, canvas);
+					redrawHistory(ctx);
+				}
+			},
+
+			getViewState: () => ({
+				offset: { ...offsetRef.current },
+				scale: scaleRef.current,
+			}),
+
+			setViewState: (offset: { x: number; y: number }, scale: number) => {
+				offsetRef.current = { ...offset };
+				scaleRef.current = scale;
+				setScale(scale);
+
 				const canvas = canvasRef.current;
 				const ctx = canvas?.getContext('2d');
 				if (canvas && ctx) {
@@ -245,9 +402,6 @@ export const WhiteboardCanvas = forwardRef<
 			},
 		}));
 
-		// --- 生命周期 ---
-
-		// 初始化 & Resize
 		useEffect(() => {
 			const canvas = canvasRef.current;
 			if (!canvas) return;
@@ -267,7 +421,44 @@ export const WhiteboardCanvas = forwardRef<
 					ctx.fillRect(0, 0, rect.width, rect.height);
 					ctx.lineCap = 'round';
 					ctx.lineJoin = 'round';
-					redrawHistory(ctx);
+
+					// 恢复视图状态：优先从服务器获取，失败则使用localStorage
+					const restoreViewState = async () => {
+						let viewState = null;
+
+						// 如果用户已登录，尝试从服务器获取
+						if (user) {
+							try {
+								viewState = await viewStateApi.getViewState(roomId);
+							} catch (error) {
+								console.warn('从服务器获取视图状态失败:', error);
+							}
+						}
+
+						// 如果服务器没有数据或未登录，使用localStorage
+						if (!viewState) {
+							const savedViewState = localStorage.getItem(getViewStateKey());
+							if (savedViewState) {
+								try {
+									viewState = JSON.parse(savedViewState);
+								} catch (error) {
+									console.warn('从localStorage恢复视图状态失败:', error);
+								}
+							}
+						}
+
+						// 应用视图状态
+						if (viewState) {
+							offsetRef.current = viewState.offset;
+							scaleRef.current = viewState.scale;
+							setScale(viewState.scale);
+						}
+					};
+
+					// 异步恢复视图状态
+					restoreViewState().finally(() => {
+						redrawHistory(ctx);
+					});
 				}
 			};
 			setupCanvas();
@@ -279,8 +470,12 @@ export const WhiteboardCanvas = forwardRef<
 			};
 			window.addEventListener('resize', handleResize);
 
-			return () => window.removeEventListener('resize', handleResize);
-		}, [redrawHistory]);
+			return () => {
+				window.removeEventListener('resize', handleResize);
+				// 组件卸载时保存视图状态
+				saveViewState();
+			};
+		}, [redrawHistory, getViewStateKey, roomId, user]);
 
 		// 更新光标大小
 		useEffect(() => {
@@ -290,8 +485,6 @@ export const WhiteboardCanvas = forwardRef<
 				customCursorRef.current.style.height = `${cursorSize}px`;
 			}
 		}, [size, scale]);
-
-		// --- 交互处理 ---
 
 		const stopDrawing = useCallback(() => {
 			if (isDrawing) {
@@ -303,11 +496,24 @@ export const WhiteboardCanvas = forwardRef<
 					const rawPoints = currentStrokePointsRef.current;
 					const optimizedPoints = simplify(rawPoints, 1, true);
 
+					const strokeData: StrokeData = {
+						id: crypto.randomUUID(),
+						tool,
+						color,
+						size,
+						points: optimizedPoints,
+						createdAt: new Date(),
+					};
+
+					// 保存到本地笔画历史
+					strokeHistoryRef.current.push(strokeData);
+
 					onStrokeFinished({
 						tool,
 						color,
 						size,
 						points: optimizedPoints,
+						createdAt: new Date(),
 					});
 				}
 				currentStrokePointsRef.current = [];
@@ -319,7 +525,6 @@ export const WhiteboardCanvas = forwardRef<
 			}
 		}, [isDrawing, isDragging, onStrokeFinished, tool, color, size]);
 
-		// 全局 MouseUp
 		useEffect(() => {
 			window.addEventListener('mouseup', stopDrawing);
 			return () => window.removeEventListener('mouseup', stopDrawing);
@@ -346,28 +551,26 @@ export const WhiteboardCanvas = forwardRef<
 				const newOffsetY =
 					mouseY - (mouseY - offsetRef.current.y) * scaleChange;
 
-				// 更新 Ref (即时)
 				scaleRef.current = newScale;
 				offsetRef.current.x = newOffsetX;
 				offsetRef.current.y = newOffsetY;
 
-				// 更新 State (触发 React 更新，如光标)
 				setScale(newScale);
 				if (onScaleChange) onScaleChange(newScale);
 
-				// 重绘 Canvas
 				const ctx = canvasRef.current?.getContext('2d');
 				if (canvasRef.current && ctx) {
 					clearCanvas(ctx, canvasRef.current);
 					redrawHistory(ctx);
 				}
 
-				// 更新光标位置
+				// 不再在这里保存视图状态，在组件卸载时保存
+
 				if (customCursorRef.current) {
 					customCursorRef.current.style.transform = `translate(${e.clientX}px, ${e.clientY}px) translate(-50%, -50%)`;
 				}
 			},
-			[clearCanvas, redrawHistory, onScaleChange, size]
+			[clearCanvas, redrawHistory, onScaleChange]
 		);
 
 		const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -397,7 +600,7 @@ export const WhiteboardCanvas = forwardRef<
 		const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
 			const rect = canvasRef.current?.getBoundingClientRect();
 
-			// 1. 光标 & 坐标计算
+			// 光标 & 坐标计算
 			if (customCursorRef.current) {
 				customCursorRef.current.style.transform = `translate(${e.clientX}px, ${e.clientY}px) translate(-50%, -50%)`;
 			}
@@ -412,7 +615,6 @@ export const WhiteboardCanvas = forwardRef<
 				onCursorChange({ x: worldX, y: worldY });
 			}
 
-			// 2. 拖拽逻辑
 			if (isDragging && lastDragPointRef.current) {
 				const deltaX = e.clientX - lastDragPointRef.current.x;
 				const deltaY = e.clientY - lastDragPointRef.current.y;
@@ -447,7 +649,6 @@ export const WhiteboardCanvas = forwardRef<
 				(e.clientX - rect.left - offsetRef.current.x) / scaleRef.current;
 			const y = (e.clientY - rect.top - offsetRef.current.y) / scaleRef.current;
 
-			// 绘制到 Canvas
 			ctx.save();
 			ctx.translate(offsetRef.current.x, offsetRef.current.y);
 			ctx.scale(scaleRef.current, scaleRef.current);
@@ -472,17 +673,14 @@ export const WhiteboardCanvas = forwardRef<
 				tool,
 			};
 
-			// 本地存储
 			drawingHistoryRef.current.push(drawData);
 			currentStrokePointsRef.current.push({ x, y });
 
-			// 回调广播
 			if (onRealtimeDraw) onRealtimeDraw(drawData);
 
 			lastPointRef.current = { x, y };
 		};
 
-		// Add an event listener to prevent the default behavior of wheel events on the canvas.
 		useEffect(() => {
 			const handleWheel = (event: WheelEvent) => {
 				event.preventDefault();

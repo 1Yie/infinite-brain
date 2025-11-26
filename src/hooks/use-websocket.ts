@@ -33,11 +33,13 @@ type ServerMessage =
 	| { type: 'draw'; data: DrawData; userId: string; timestamp: number }
 	| { type: 'clear'; userId: string; timestamp: number }
 	| { type: 'undo'; userId: string; timestamp: number }
+	| { type: 'redo'; data: StrokeData; userId: string; timestamp: number }
 	| { type: 'cursor'; data: DrawData; userId: string; timestamp: number }
 	| { type: 'history-sync'; data: StrokeData[]; timestamp: number };
 
 interface UseWebSocketReturn {
 	isConnected: boolean;
+	isConnecting: boolean;
 	userId: string | null;
 	username: string | null;
 	userCount: number;
@@ -45,6 +47,7 @@ interface UseWebSocketReturn {
 	sendCursor: (data: DrawData) => void;
 	// sendClear: () => void;
 	sendUndo: () => void;
+	sendRedo: () => void;
 	sendStrokeFinish: (data: StrokeData) => void;
 	onMessage: (callback: (message: ServerMessage) => void) => () => void;
 }
@@ -54,6 +57,7 @@ export function useWebSocket(
 	roomId?: string
 ): UseWebSocketReturn {
 	const [isConnected, setIsConnected] = useState(false);
+	const [isConnecting, setIsConnecting] = useState(false);
 	const [userId, setUserId] = useState<string | null>(null);
 	const [username, setUsername] = useState<string | null>(null);
 	const [userCount, setUserCount] = useState(0);
@@ -88,11 +92,13 @@ export function useWebSocket(
 		function connectWebSocket() {
 			try {
 				console.log('尝试连接 WebSocket... 房间:', roomId);
+				setIsConnecting(true);
 				const ws = wsApi.connect(roomId as string);
 				socketRef.current = ws;
 				console.log('WebSocket 连接已创建');
 
 				setIsConnected(true);
+				setIsConnecting(false);
 				if (reconnectTimeoutRef.current) {
 					clearTimeout(reconnectTimeoutRef.current);
 					reconnectTimeoutRef.current = undefined;
@@ -101,6 +107,7 @@ export function useWebSocket(
 				ws.on('close', () => {
 					console.log('WebSocket 连接关闭');
 					setIsConnected(false);
+					setIsConnecting(false);
 					socketRef.current = null;
 
 					if (!reconnectTimeoutRef.current) {
@@ -114,6 +121,7 @@ export function useWebSocket(
 				ws.on('error', (error) => {
 					console.error('WebSocket 错误:', error);
 					setIsConnected(false);
+					setIsConnecting(false);
 					socketRef.current = null;
 				});
 
@@ -218,6 +226,12 @@ export function useWebSocket(
 		}
 	}, [isConnected]);
 
+	const sendRedo = useCallback(() => {
+		if (socketRef.current && isConnected) {
+			wsApi.sendRedo(socketRef.current);
+		}
+	}, [isConnected]);
+
 	const onMessage = useCallback(
 		(callback: (message: ServerMessage) => void) => {
 			messageCallbacksRef.current.add(callback);
@@ -230,6 +244,7 @@ export function useWebSocket(
 
 	return {
 		isConnected,
+		isConnecting,
 		userId,
 		username,
 		userCount,
@@ -237,6 +252,7 @@ export function useWebSocket(
 		sendCursor,
 		// sendClear,
 		sendUndo,
+		sendRedo,
 		sendStrokeFinish,
 		onMessage,
 	};
