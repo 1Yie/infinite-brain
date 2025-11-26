@@ -5,12 +5,18 @@ import { api } from './api';
 import 'dotenv/config';
 
 const port = process.env.PORT || 3000;
-const corsOrigins = process.env.CORS_ALLOWED_ORIGINS?.split(',') || [
-	'http://localhost:5173',
-];
 
 const app = new Elysia()
-	.use(cors({ origin: corsOrigins, credentials: true }))
+	.use(
+		cors({
+			origin: ((req: Request) => {
+				const allowed = process.env.CORS_ALLOWED_ORIGINS?.split(',') || [];
+				const reqOrigin = req.headers.get('origin') || '';
+				return allowed.includes(reqOrigin) as boolean; // 强制类型断言
+			}) as (req: Request) => boolean,
+			credentials: true,
+		})
+	)
 	.use(
 		swagger({
 			documentation: {
