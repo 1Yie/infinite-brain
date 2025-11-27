@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { wsApi } from '../api/ws';
+import { wsApi } from '../api/ws/board';
 import type { StrokeData } from '../types/whiteboard';
 
 type BoardSocket = ReturnType<typeof wsApi.connect>;

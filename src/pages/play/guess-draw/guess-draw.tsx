@@ -2,17 +2,48 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-// 移除 Card 相关引用，保留 Badge
 import { Badge } from '@/components/ui/badge';
 import {
 	guessDrawApi,
 	guessDrawWsApi,
 	type GameState,
-	type DrawMessage,
+	type GamePlayer,
 } from '@/api/guess-draw';
+
+// WebSocket 消息类型
+interface WebSocketMessage {
+	type: string;
+	data?: DrawData | StrokeData | GameState;
+	userId?: string;
+	username?: string;
+	roomId?: string;
+	timestamp?: number;
+	// 游戏相关字段
+	totalRounds?: number;
+	guess?: string;
+	message?: string;
+	attempt?: {
+		userId: string;
+		username: string;
+		guess: string;
+		isCorrect: boolean;
+		timestamp: number;
+	};
+	score?: number;
+	// 回合相关字段
+	currentRound?: number;
+	drawerUsername?: string;
+	wordHint?: string;
+	word?: string;
+	winner?: boolean;
+	reason?: string;
+	winnerName?: string;
+}
 import {
 	WhiteboardCanvas,
 	type WhiteboardCanvasHandle,
+	type DrawData,
+	type StrokeData,
 } from '@/pages/white-board/whiteboard-canvas';
 import { useAuth } from '@/context/auth-context';
 import { SetTitle } from '@/utils/set-title';
@@ -27,8 +58,9 @@ import {
 	ArrowLeft,
 	Loader2,
 	RotateCcw,
-	Send, // 假如你没有安装 lucide-react 的 Send，可以删掉这个引用，下面按钮里用文字代替
+	Send,
 	Gamepad2,
+	Clock,
 } from 'lucide-react';
 
 type SocketType = ReturnType<typeof guessDrawWsApi.connect>;
@@ -115,9 +147,6 @@ export function GuessDrawPage() {
 		}
 	}, [chatMessages]);
 
-	// =================================================================
-	// WebSocket 连接与事件处理
-	// =================================================================
 	useEffect(() => {
 		if (!roomId || !userId) return;
 
@@ -126,7 +155,7 @@ export function GuessDrawPage() {
 		socketRef.current = ws;
 
 		ws.subscribe((message) => {
-			const data = message.data as DrawMessage;
+			const data = message.data as WebSocketMessage;
 			console.log('📨 收到消息:', data.type, data);
 
 			switch (data.type) {
@@ -136,27 +165,43 @@ export function GuessDrawPage() {
 					break;
 
 				case 'game-state':
-					console.log('🎮 更新游戏状态:', {
-						isActive: data.data.isActive,
-						currentRound: data.data.currentRound,
-						currentDrawer: data.data.currentDrawer,
-						roundStartTime: data.data.roundStartTime,
-						wordHint: data.data.wordHint,
-					});
+					console.log('🎮 更新游戏状态:', data.data);
 
-					if (data.data) {
+					if (
+						data.data &&
+						typeof data.data === 'object' &&
+						'isActive' in data.data
+					) {
 						// 检查身份是否变化
 						const oldState = gameStateRef.current;
-						const newState = data.data;
+						const newState = data.data as GameState;
 
 						setGameState(newState);
 						gameStateRef.current = newState; // 更新ref
 						setIsLoading(false);
 
+						// 检查房间是否已空
+						if (newState.players.length === 0) {
+							console.log('🏠 房间已空，自动返回大厅');
+							setChatMessages((prev) => [
+								...prev.slice(-19),
+								{
+									name: '系统',
+									msg: '房间已空，正在返回大厅...',
+									isSystem: true,
+								},
+							]);
+							// 延迟一下让用户看到消息
+							setTimeout(() => {
+								navigate('/play/guess-draw');
+							}, 1500);
+							return;
+						}
+
 						// 身份变化日志
 						if (oldState && newState.currentDrawer !== oldState.currentDrawer) {
 							const newDrawer = newState.players.find(
-								(p) => p.userId === newState.currentDrawer
+								(p: GamePlayer) => p.userId === newState.currentDrawer
 							);
 							console.log('🔄 画者切换:', {
 								from: oldState.currentDrawer,
@@ -166,7 +211,7 @@ export function GuessDrawPage() {
 
 							// 检查当前用户身份
 							const myNewState = newState.players.find(
-								(p) => p.userId === userId
+								(p: GamePlayer) => p.userId === userId
 							);
 							if (myNewState) {
 								console.log('👤 我的新身份:', {
@@ -312,12 +357,12 @@ export function GuessDrawPage() {
 					break;
 
 				case 'guess-attempt':
-					console.log(`💭 ${data.attempt.username}: ${data.attempt.guess}`);
+					console.log(`💭 ${data.attempt?.username}: ${data.attempt?.guess}`);
 					setChatMessages((prev) => [
 						...prev.slice(-19),
 						{
-							name: data.attempt.username,
-							msg: data.attempt.guess,
+							name: data.attempt?.username || '未知用户',
+							msg: data.attempt?.guess || '',
 						},
 					]);
 					break;
@@ -328,7 +373,7 @@ export function GuessDrawPage() {
 						...prev.slice(-19),
 						{
 							name: data.username || '未知用户',
-							msg: data.message,
+							msg: data.message || '',
 						},
 					]);
 					break;
@@ -336,8 +381,13 @@ export function GuessDrawPage() {
 				case 'draw':
 				case 'stroke-finish':
 					// 只接收其他人的绘画数据
-					if (data.userId !== userId && data.data) {
-						canvasRef.current?.drawRemote(data.data);
+					if (
+						data.userId !== userId &&
+						data.data &&
+						typeof data.data === 'object' &&
+						'x' in data.data
+					) {
+						canvasRef.current?.drawRemote(data.data as DrawData);
 					}
 					break;
 
@@ -387,11 +437,7 @@ export function GuessDrawPage() {
 				setIsConnected(false);
 			}
 		};
-	}, [roomId, userId]); // 移除 gameState 依赖，避免不必要的重连
-
-	// =================================================================
-	// 交互逻辑
-	// =================================================================
+	}, [roomId, userId, navigate]); // 移除 gameState 依赖，避免不必要的重连
 
 	const handleStartGame = async () => {
 		if (!socketRef.current) {
@@ -428,20 +474,22 @@ export function GuessDrawPage() {
 	};
 
 	const handleStrokeFinished = useCallback(
-		(stroke: DrawMessage['data']) => {
+		(stroke: StrokeData) => {
 			if (!isDrawer || !socketRef.current) {
 				return;
 			}
+			// @ts-expect-error ts-migrate(2345) FIXME: Argument of type 'SocketType' is not assignable to parameter of type 'WebSocket'.
 			guessDrawWsApi.sendStrokeFinish(socketRef.current, stroke);
 		},
 		[isDrawer]
 	);
 
 	const handleRealtimeDraw = useCallback(
-		(data: DrawMessage['data']) => {
+		(data: DrawData) => {
 			if (!isDrawer || !socketRef.current) {
 				return;
 			}
+			// @ts-expect-error ts-migrate(2345) FIXME: Argument of type 'SocketType' is not assignable to parameter of type 'WebSocket'.
 			guessDrawWsApi.sendDraw(socketRef.current, data);
 		},
 		[isDrawer]
@@ -455,10 +503,6 @@ export function GuessDrawPage() {
 		canvasRef.current?.clear();
 		guessDrawWsApi.sendClear(socketRef.current);
 	};
-
-	// =================================================================
-	// 渲染 (已修改为无 Card、Flex 自适应布局)
-	// =================================================================
 
 	if (isLoading) {
 		return (
@@ -474,9 +518,24 @@ export function GuessDrawPage() {
 			<div className="flex min-h-screen items-center justify-center">
 				<div className="text-center">
 					<p className="text-lg text-gray-600">房间不存在</p>
-					<Button onClick={() => navigate('/play')} className="mt-4">
+					<Button onClick={() => navigate('/play/guess-draw')} className="mt-4">
 						返回大厅
 					</Button>
+				</div>
+			</div>
+		);
+	}
+
+	// 检查房间是否已空
+	if (gameState.players.length === 0) {
+		console.log('🏠 房间已空，自动返回大厅');
+		// 短暂显示消息然后自动返回
+		setTimeout(() => navigate('/play/guess-draw'), 1500);
+		return (
+			<div className="flex min-h-screen items-center justify-center">
+				<div className="text-center">
+					<p className="text-lg text-gray-600">房间已空</p>
+					<p className="mt-2 text-sm text-gray-400">正在返回大厅...</p>
 				</div>
 			</div>
 		);
@@ -485,11 +544,9 @@ export function GuessDrawPage() {
 	const canStart = gameState.players.length >= 2;
 
 	return (
-		// 根容器：固定高度 100vh，无全局滚动
 		<div className="flex h-screen w-full flex-col overflow-hidden bg-gray-50">
 			<SetTitle title={`你猜我画 - 房间 ${roomId}`} />
 
-			{/* 顶部导航栏 */}
 			<header className="sticky top-0 z-10 border-b bg-white px-4 py-3 shadow-sm sm:px-6 lg:px-8">
 				<div className="mx-auto flex max-w-7xl items-center justify-between">
 					<div className="flex items-center gap-4">
@@ -534,13 +591,88 @@ export function GuessDrawPage() {
 				</div>
 			</header>
 
-			{/* 主内容区域：Flex 布局，自动撑满剩余高度 */}
+			<div className="z-20 flex-none border-b bg-white px-3 py-2 shadow-sm xl:hidden">
+				<div className="flex h-14 items-center gap-3">
+					{/* 左侧：精简状态 */}
+					<div className="flex min-w-20 flex-none flex-col items-center justify-center border-r pr-3">
+						{!gameState.isActive ? (
+							<Button
+								onClick={handleStartGame}
+								disabled={!canStart}
+								size="sm"
+								className="h-12 w-full bg-black text-base hover:bg-gray-800"
+							>
+								开始
+							</Button>
+						) : (
+							<>
+								<div
+									className={`font-mono text-xl leading-none font-bold ${Math.ceil(timeLeft) <= 10 ? 'text-red-500' : 'text-gray-800'}`}
+								>
+									{Math.ceil(timeLeft)}
+								</div>
+								{isDrawer ? (
+									<div className="max-w-16 truncate text-xs font-bold text-blue-600">
+										{currentWord}
+									</div>
+								) : (
+									<div className="font-mono text-xs tracking-widest text-gray-700">
+										{gameState.wordHint}
+									</div>
+								)}
+							</>
+						)}
+					</div>
+					<div className="scrollbar-none flex flex-1 items-center gap-2 overflow-x-auto">
+						{gameState.players
+							.sort((a, b) => b.score - a.score)
+							.map((player) => (
+								<div
+									key={player.userId}
+									className={`flex flex-none items-center gap-2 rounded border px-2 py-1 ${
+										player.userId === gameState.currentDrawer
+											? 'border-blue-300 bg-blue-50 shadow-sm'
+											: 'border-gray-200 bg-white'
+									}`}
+								>
+									{/* 头像 */}
+									<div className="relative">
+										<div
+											className={`flex h-7 w-7 items-center justify-center rounded-full ${
+												player.userId === userId
+													? 'bg-black text-white'
+													: 'bg-gray-100 text-gray-500'
+											}`}
+										>
+											<CircleUser className="h-4 w-4" />
+										</div>
+
+										{player.hasGuessed && (
+											<div className="absolute -top-1 -right-1 h-2 w-2 rounded-full border border-white bg-green-500" />
+										)}
+									</div>
+
+									{/* 名字 + 分数（竖向） */}
+									<div className="flex flex-col gap-0 leading-tight">
+										<p className="text-sm font-medium text-gray-800">
+											{player.username}
+										</p>
+										<p className="font-mono text-sm text-gray-500">
+											{player.score}
+										</p>
+									</div>
+								</div>
+							))}
+					</div>
+				</div>
+			</div>
+
 			<div className="flex flex-1 gap-4 overflow-hidden p-4">
-				{/* 左侧栏：游戏信息 & 玩家列表 (固定宽度) */}
-				<div className="hidden w-64 flex-none flex-col gap-4 lg:flex">
-					{/* 游戏状态面板 */}
-					<div className="flex flex-none flex-col overflow-hidden rounded-xl border bg-white shadow-sm">
-						<div className="border-b bg-gray-50/50 px-4 py-3">
+				{/* A. 左侧边栏 (仅在 xl 以上显示) */}
+				<div className="hidden w-64 flex-none flex-col gap-4 xl:flex">
+					{/* 状态面板 */}
+					<div className="flex flex-none flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+						<div className="border-b border-gray-100 bg-gray-50/50 px-4 py-3">
 							<h3 className="text-sm font-semibold text-gray-700">状态</h3>
 						</div>
 						<div className="p-4">
@@ -552,7 +684,7 @@ export function GuessDrawPage() {
 									</div>
 									<Button
 										onClick={handleStartGame}
-										className="w-full"
+										className="w-full bg-black text-white hover:bg-gray-800"
 										disabled={!canStart}
 									>
 										<Play className="mr-2 h-4 w-4" /> 开始
@@ -562,7 +694,7 @@ export function GuessDrawPage() {
 								<div className="space-y-4">
 									<div className="text-center">
 										<span
-											className={`font-mono text-4xl font-bold ${Math.ceil(timeLeft) <= 10 ? 'text-red-500' : 'text-gray-800'}`}
+											className={`font-mono text-5xl font-bold ${Math.ceil(timeLeft) <= 10 ? 'text-red-500' : 'text-gray-800'}`}
 										>
 											{Math.ceil(timeLeft)}
 										</span>
@@ -570,14 +702,13 @@ export function GuessDrawPage() {
 											剩余时间
 										</span>
 									</div>
-
 									<div className="rounded-lg border border-blue-100 bg-blue-50/50 p-3 text-center">
 										{isDrawer ? (
 											<>
 												<div className="mb-1 text-xs text-blue-400">
 													目标词汇
 												</div>
-												<div className="text-lg font-bold break-words text-blue-600">
+												<div className="text-lg font-bold text-blue-600">
 													{currentWord}
 												</div>
 											</>
@@ -585,17 +716,16 @@ export function GuessDrawPage() {
 											<>
 												<div className="mb-1 text-xs text-gray-400">提示</div>
 												<div className="font-mono text-xl tracking-[0.2em] text-gray-800">
-													{gameState.wordHint || '...'}
+													{gameState.wordHint}
 												</div>
 											</>
 										)}
 									</div>
-
 									<div className="flex items-center justify-between px-1 text-xs">
 										<span className="text-gray-500">画者</span>
 										<Badge
 											variant="outline"
-											className="max-w-[100px] truncate bg-white"
+											className="max-w-[100px] truncate border-gray-200 bg-white"
 										>
 											{gameState.players.find(
 												(p) => p.userId === gameState.currentDrawer
@@ -607,9 +737,9 @@ export function GuessDrawPage() {
 						</div>
 					</div>
 
-					{/* 玩家列表：自适应高度 (flex-1) 并内部滚动 */}
-					<div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border bg-white shadow-sm">
-						<div className="flex items-center justify-between border-b bg-gray-50/50 px-4 py-3">
+					{/* 竖向玩家列表 */}
+					<div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+						<div className="flex items-center justify-between border-b border-gray-100 bg-gray-50/50 px-4 py-3">
 							<h3 className="text-sm font-semibold text-gray-700">排行榜</h3>
 						</div>
 						<div className="flex-1 space-y-1 overflow-y-auto p-2">
@@ -618,30 +748,27 @@ export function GuessDrawPage() {
 								.map((player) => (
 									<div
 										key={player.userId}
-										className={`flex items-center justify-between rounded-lg p-2 text-sm transition-colors ${
-											player.userId === gameState.currentDrawer
-												? 'border border-blue-100 bg-blue-50'
-												: 'border border-transparent hover:bg-gray-50'
-										}`}
+										className={`flex items-center justify-between rounded-lg p-2 text-sm transition-colors ${player.userId === gameState.currentDrawer ? 'border border-blue-100 bg-blue-50' : 'border border-transparent hover:bg-gray-50'}`}
 									>
 										<div className="flex min-w-0 items-center gap-2">
 											<div
-												className={`flex h-8 w-8 flex-none items-center justify-center rounded-full ${player.userId === userId ? 'bg-primary/10 text-primary' : 'bg-gray-100 text-gray-400'}`}
+												className={`flex h-8 w-8 flex-none items-center justify-center rounded-full ${player.userId === userId ? 'bg-black text-white' : 'bg-gray-100 text-gray-500'}`}
 											>
 												<CircleUser className="h-4 w-4" />
 											</div>
 											<div className="flex min-w-0 flex-col">
 												<span
-													className={`truncate text-xs ${player.userId === userId ? 'font-bold' : 'font-medium'}`}
+													className={`truncate text-xs ${player.userId === userId ? 'font-bold text-gray-900' : 'font-medium text-gray-600'}`}
 												>
 													{player.username}
 												</span>
-												{player.isDrawing && (
-													<span className="flex items-center gap-1 text-[10px] text-blue-500">
-														<Pencil className="h-3 w-3" />
-														正在画
-													</span>
-												)}
+												{player.isDrawing &&
+													player.userId !== userId &&
+													gameState.isActive && (
+														<span className="flex items-center gap-1 text-[10px] text-blue-500">
+															<Pencil className="h-3 w-3" /> 正在画
+														</span>
+													)}
 											</div>
 										</div>
 										<div className="text-right">
@@ -660,10 +787,9 @@ export function GuessDrawPage() {
 					</div>
 				</div>
 
-				{/* 中间：画布区域 (自适应撑满) */}
-				<div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl border bg-white shadow-sm">
-					{/* 工具栏 */}
-					<div className="z-20 flex h-12 flex-none items-center justify-between border-b bg-white px-4">
+				{/* B. 中间：画布区域 (自适应撑满) */}
+				<div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+					<div className="z-20 flex h-12 flex-none items-center justify-between border-b border-gray-100 bg-white px-4">
 						<div className="flex items-center gap-2 text-sm font-medium text-gray-500">
 							<Pencil className="h-4 w-4" /> 画布
 						</div>
@@ -673,7 +799,7 @@ export function GuessDrawPage() {
 									<Button
 										variant={tool === 'pen' ? 'default' : 'ghost'}
 										size="icon"
-										className={`h-7 w-7 rounded-md ${tool === 'pen' ? 'shadow-sm' : ''}`}
+										className={`h-7 w-7 rounded-md ${tool === 'pen' ? 'bg-white text-black shadow-sm' : 'text-gray-500'}`}
 										onClick={() => setTool('pen')}
 									>
 										<Pencil className="h-3.5 w-3.5" />
@@ -681,7 +807,7 @@ export function GuessDrawPage() {
 									<Button
 										variant={tool === 'eraser' ? 'default' : 'ghost'}
 										size="icon"
-										className={`h-7 w-7 rounded-md ${tool === 'eraser' ? 'shadow-sm' : ''}`}
+										className={`h-7 w-7 rounded-md ${tool === 'eraser' ? 'bg-white text-black shadow-sm' : 'text-gray-500'}`}
 										onClick={() => setTool('eraser')}
 									>
 										<Eraser className="h-3.5 w-3.5" />
@@ -701,14 +827,14 @@ export function GuessDrawPage() {
 									max="20"
 									value={size}
 									onChange={(e) => setSize(Number(e.target.value))}
-									className="accent-primary h-1.5 w-20 cursor-pointer appearance-none rounded-lg bg-gray-200"
+									className="h-1.5 w-20 cursor-pointer appearance-none rounded-lg bg-gray-200 accent-black"
 									title="笔刷大小"
 								/>
 								<div className="mx-1 h-4 w-px bg-gray-200"></div>
 								<Button
 									variant="ghost"
 									size="icon"
-									className="h-7 w-7 rounded-md text-red-500 hover:bg-red-50 hover:text-red-600"
+									className="h-7 w-7 rounded-md text-gray-400 hover:bg-red-50 hover:text-red-600"
 									onClick={handleClearCanvas}
 								>
 									<RotateCcw className="h-3.5 w-3.5" />
@@ -717,7 +843,6 @@ export function GuessDrawPage() {
 						)}
 					</div>
 
-					{/* 画布容器：利用 absolute inset-0 强制撑满父容器 */}
 					<div className="relative flex-1 cursor-crosshair overflow-hidden bg-white">
 						<div className="absolute inset-0">
 							<WhiteboardCanvas
@@ -735,7 +860,7 @@ export function GuessDrawPage() {
 						{!gameState.isActive && (
 							<div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-slate-50/60 backdrop-blur-sm">
 								<div className="rounded-2xl border border-gray-100 bg-white p-6 text-center shadow-lg">
-									<RotateCcw className="mx-auto mb-3 h-10 w-10 text-gray-300" />
+									<Clock className="mx-auto mb-3 h-10 w-10 text-gray-300" />
 									<span className="block font-medium text-gray-600">
 										等待游戏开始
 									</span>
@@ -748,15 +873,14 @@ export function GuessDrawPage() {
 					</div>
 				</div>
 
-				{/* 右侧：聊天与猜测 (固定宽度) */}
-				<div className="hidden w-80 flex-none flex-col overflow-hidden rounded-xl border bg-white shadow-sm lg:flex">
-					<div className="flex h-12 flex-none items-center justify-between border-b bg-gray-50/50 px-4">
+				{/* C. 右侧：聊天与猜测 (lg以上显示, xl以下作为右栏) */}
+				<div className="w-80 flex-none flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm lg:flex">
+					<div className="flex h-12 flex-none items-center justify-between border-b border-gray-100 bg-gray-50/50 px-4">
 						<h3 className="flex items-center gap-2 text-sm font-semibold text-gray-700">
 							<MessageSquare className="h-4 w-4" /> 消息
 						</h3>
 					</div>
 
-					{/* 消息列表：撑满高度并内部滚动 */}
 					<div
 						ref={chatMessagesRef}
 						className="flex-1 space-y-3 overflow-y-auto bg-white p-4"
@@ -773,7 +897,7 @@ export function GuessDrawPage() {
 									className={`flex flex-col text-sm ${msg.isSystem ? 'items-center' : ''}`}
 								>
 									{msg.isSystem ? (
-										<span className="my-1 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] text-gray-500">
+										<span className="my-1 rounded-full border border-gray-200 bg-gray-100 px-2 py-0.5 text-[10px] text-gray-500">
 											{msg.msg}
 										</span>
 									) : (
@@ -784,11 +908,7 @@ export function GuessDrawPage() {
 												{msg.name}
 											</span>
 											<div
-												className={`max-w-[90%] rounded-2xl px-3 py-1.5 break-words ${
-													msg.name === user?.name
-														? 'bg-primary text-primary-foreground rounded-tr-none'
-														: 'rounded-tl-none bg-gray-100 text-gray-800'
-												}`}
+												className={`overflow-wrap-anywhere max-w-[90%] rounded-2xl px-3 py-1.5 text-xs ${msg.name === user?.name ? 'rounded-tr-none bg-black text-white' : 'rounded-tl-none bg-gray-100 text-gray-800'}`}
 											>
 												{msg.msg}
 											</div>
@@ -799,9 +919,8 @@ export function GuessDrawPage() {
 						)}
 					</div>
 
-					{/* 输入区域 */}
 					{gameState.isActive && (
-						<div className="flex-none border-t bg-gray-50 p-3">
+						<div className="flex-none border-t border-gray-100 bg-gray-50 p-3">
 							<div className="relative">
 								<Input
 									placeholder={isDrawer ? '和大家聊聊...' : '输入答案...'}
@@ -811,12 +930,12 @@ export function GuessDrawPage() {
 										e.key === 'Enter' &&
 										(isDrawer ? handleSendChat() : handleSubmitGuess())
 									}
-									className="border-gray-200 bg-white pr-10 focus-visible:ring-1"
+									className="h-9 border-gray-200 bg-white pr-10 text-sm focus-visible:ring-1 focus-visible:ring-gray-400"
 								/>
 								<button
 									onClick={isDrawer ? handleSendChat : handleSubmitGuess}
 									disabled={!guessInput.trim()}
-									className="hover:text-primary absolute top-1 right-1 p-1.5 text-gray-400 transition-colors disabled:opacity-50"
+									className="absolute top-1 right-1 p-1.5 text-gray-400 transition-colors hover:text-black disabled:opacity-30"
 								>
 									<Send className="h-4 w-4" />
 								</button>

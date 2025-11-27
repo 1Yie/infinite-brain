@@ -8,9 +8,11 @@ import { Register } from '../pages/auth/register';
 import { RoomPage } from '../pages/room';
 import { HomePage } from '../pages/home';
 import { SetTitle } from '@/utils/set-title';
-import { GuessDrawLobby } from '../pages/play';
-import { CreateGuessDrawRoom } from '../pages/play/create-room';
-import { GuessDrawPage } from '../pages/play/guess-draw';
+import { GuessDrawLobby } from '../pages/play/guess-draw';
+import { CreateGuessDrawRoom } from '../pages/play/guess-draw/create-room';
+import { GuessDrawPage } from '../pages/play/guess-draw/guess-draw';
+import { NotFoundPage } from '../pages/not-found';
+import { RoomGuard } from '../components/router/room-guard';
 
 export const router = createBrowserRouter([
 	{
@@ -71,9 +73,9 @@ export const router = createBrowserRouter([
 			{
 				path: 'play/guess-draw/:roomId',
 				element: (
-					<>
+					<RoomGuard>
 						<GuessDrawPage />
-					</>
+					</RoomGuard>
 				),
 			},
 		],
@@ -96,6 +98,14 @@ export const router = createBrowserRouter([
 				<AnonymousOnly>
 					<Register />
 				</AnonymousOnly>
+			</AuthProvider>
+		),
+	},
+	{
+		path: '*',
+		element: (
+			<AuthProvider>
+				<NotFoundPage />
 			</AuthProvider>
 		),
 	},

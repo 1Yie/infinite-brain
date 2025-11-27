@@ -14,6 +14,8 @@ const roundTimers = new Map<string, NodeJS.Timeout>();
 // WebSocket 连接引用（用于广播）
 const roomConnections = new Map<string, Set<WebSocket>>();
 
+export { roomUsers, roomGames };
+
 export const gameRoute = new Elysia()
 	.use(optionalAuth)
 	.derive(() => ({ connectionId: crypto.randomUUID() }))
@@ -36,7 +38,7 @@ export const gameRoute = new Elysia()
 			if (!roomConnections.has(roomId)) {
 				roomConnections.set(roomId, new Set());
 			}
-			roomConnections.get(roomId)!.add(ws);
+			roomConnections.get(roomId)!.add(ws as unknown as WebSocket);
 
 			// 添加用户到房间
 			if (!roomUsers.has(roomId)) {
@@ -400,7 +402,7 @@ export const gameRoute = new Elysia()
 			// 移除连接引用
 			const connections = roomConnections.get(roomId);
 			if (connections) {
-				connections.delete(ws);
+				connections.delete(ws as unknown as WebSocket);
 				if (connections.size === 0) {
 					roomConnections.delete(roomId);
 				}
@@ -456,12 +458,9 @@ export const gameRoute = new Elysia()
 			broadcastToAll(roomId, userLeftMsg);
 
 			// 检查是否只剩一个人，如果是则让那个人胜利
-			if (gameState && gameState.isActive && room.size === 1) {
+			if (gameState && gameState.isActive && gameState.players.length === 1) {
 				console.log('房间只剩一个人，宣布胜利者');
-				const remainingPlayerId = Array.from(room)[0];
-				const remainingPlayer = gameState.players.find(
-					(p: GamePlayer) => p.userId === remainingPlayerId
-				);
+				const remainingPlayer = gameState.players[0];
 
 				if (remainingPlayer) {
 					// 给胜利者加分
@@ -470,7 +469,7 @@ export const gameRoute = new Elysia()
 					// 广播胜利消息
 					const victoryMsg = {
 						type: 'game-end',
-						winner: remainingPlayerId,
+						winner: remainingPlayer.userId,
 						winnerName: remainingPlayer.username,
 						reason: 'last-player-standing',
 						finalScores: gameState.players.sort((a, b) => b.score - a.score),
@@ -521,9 +520,9 @@ export const gameRoute = new Elysia()
 				broadcastToAll(roomId, updatedStateMsg);
 			}
 
-			// 如果房间空了，清理资源
-			if (room.size === 0) {
-				console.log(`房间 ${roomId} 已空，清理资源`);
+			// 如果房间内的玩家空了，清理资源
+			if (gameState && gameState.players.length === 0) {
+				console.log(`房间 ${roomId} 内的玩家已空，清理资源`);
 				roomUsers.delete(roomId);
 				roomGames.delete(roomId);
 				clearRoundTimer(roomId);
@@ -551,7 +550,7 @@ function broadcastToAll(roomId: string, message: Record<string, unknown>) {
 	// 直接向每个连接发送消息，确保所有人都收到
 	connections.forEach((ws) => {
 		try {
-			ws.send(message);
+			ws.send(JSON.stringify(message));
 		} catch (error) {
 			console.error('发送消息失败:', error);
 		}
@@ -638,7 +637,7 @@ function startNewRound(
 	const availableWords = WORD_LIBRARY.filter(
 		(word: string) => !gameState.usedWords.includes(word)
 	);
-	let newWord: string;
+	let newWord: string | undefined;
 
 	if (availableWords.length > 0) {
 		const randomIndex = Math.floor(Math.random() * availableWords.length);
@@ -649,18 +648,20 @@ function startNewRound(
 		newWord = WORD_LIBRARY[Math.floor(Math.random() * WORD_LIBRARY.length)];
 	}
 
-	gameState.usedWords.push(newWord);
+	gameState.usedWords.push(newWord || '');
 	console.log(`选择词汇: ${newWord}`);
 
 	// 生成提示（隐藏部分字符）
 	const hintChars = newWord
-		.split('')
-		.map((char: string, index: number) => (index % 2 === 0 ? char : '_'));
+		? newWord
+				.split('')
+				.map((char: string, index: number) => (index % 2 === 0 ? char : '_'))
+		: [];
 	const wordHint = hintChars.join('');
 
 	// 更新游戏状态
 	gameState.currentDrawer = newDrawer.userId;
-	gameState.currentWord = newWord;
+	gameState.currentWord = newWord || '';
 	gameState.wordHint = wordHint;
 	gameState.roundStartTime = Date.now();
 
@@ -737,7 +738,9 @@ function endGame(
 		data: { user?: { id?: number | string; name?: string } };
 	}
 ) {
-	console.log(`\n========== 游戏结束: ${roomId} ==========`);
+	console.log(`\n========== 游戏结束: ${roomId}  ==========`);
+
+	console.log('WebSocket:', ws.data);
 	const gameState = roomGames.get(roomId);
 	if (!gameState) return;
 

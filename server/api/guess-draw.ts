@@ -1,6 +1,7 @@
 import { Elysia, t } from 'elysia';
 import { auth } from '../utils/verify';
 import { WORD_LIBRARY, type GameState } from '../types';
+import { roomUsers, roomGames } from './ws/guess-draw';
 
 // 内存中存储游戏状态（生产环境应使用数据库）
 export const gameRooms = new Map<string, GameState>();
@@ -26,28 +27,36 @@ export const guessDrawRoutes = new Elysia({ prefix: '/guess-draw' })
 
 	// 获取房间列表
 	.get('/rooms', () => {
-		const rooms = Array.from(gameRooms.entries()).map(([id, gameState]) => {
-			const roomData = {
-				id,
-				name: id,
-				ownerId: gameState.players[0]?.userId || '',
-				ownerName: gameState.players[0]?.username || '未知',
-				maxPlayers: 8,
-				currentPlayers: gameState.players.length,
-				rounds: gameState.totalRounds,
-				roundTime: gameState.roundTimeLimit,
-				isPrivate: false,
-				status: (gameState.isActive ? 'playing' : 'waiting') as
-					| 'waiting'
-					| 'playing'
-					| 'finished',
-				createdAt: new Date().toISOString(),
-			};
-			console.log(`房间 ${id} 数据:`, roomData);
-			return roomData;
-		});
+		const rooms = Array.from(roomGames.entries())
+			.map(([id, gameState]) => {
+				// 获取当前在线玩家数
+				const currentRoomUsers = roomUsers.get(id);
+				const currentPlayers = currentRoomUsers ? currentRoomUsers.size : 0;
+
+				const roomData = {
+					id,
+					name: id,
+					ownerId: gameState.players[0]?.userId || '',
+					ownerName: gameState.players[0]?.username || '未知',
+					maxPlayers: 8,
+					currentPlayers,
+					rounds: gameState.totalRounds,
+					roundTime: gameState.roundTimeLimit,
+					isPrivate: false,
+					status: (gameState.isActive ? 'playing' : 'waiting') as
+						| 'waiting'
+						| 'playing'
+						| 'finished',
+					createdAt: new Date().toISOString(),
+				};
+				return roomData;
+			})
+			.filter((room) => room.currentPlayers > 0); // 只显示还有玩家的房间
 
 		console.log(`总共 ${rooms.length} 个房间`);
+		rooms.forEach((room) => {
+			console.log(`房间 ${room.id} 数据:`, room);
+		});
 		return {
 			success: true,
 			data: {

@@ -1,4 +1,8 @@
-import { client } from './client';
+import { client } from '../client';
+import type {
+	DrawData,
+	StrokeData,
+} from '../../pages/white-board/whiteboard-canvas';
 
 const createConnection = (roomId: string) => {
 	return client.api.ws['guess-draw'].subscribe({
@@ -8,7 +12,6 @@ const createConnection = (roomId: string) => {
 
 type GuessDrawSocket = ReturnType<typeof createConnection>;
 type ClientMessage = Parameters<GuessDrawSocket['send']>[0];
-type DrawMessage = Extract<ClientMessage, { type: 'draw' }>;
 
 export const guessDrawWsApi = {
 	/**
@@ -26,15 +29,14 @@ export const guessDrawWsApi = {
 	/**
 	 * 发送绘图 (类型安全)
 	 */
-	sendDraw: (socket: GuessDrawSocket, data: DrawMessage['data']) => {
-		// 使用类型断言构建消息，对外部调用者来说是安全的
+	sendDraw: (socket: GuessDrawSocket, data: DrawData) => {
 		socket.send({ type: 'draw', data } as ClientMessage);
 	},
 
 	/**
 	 * 发送笔画结束
 	 */
-	sendStrokeFinish: (socket: GuessDrawSocket, data: DrawMessage['data']) => {
+	sendStrokeFinish: (socket: GuessDrawSocket, data: StrokeData) => {
 		socket.send({ type: 'stroke-finish', data } as ClientMessage);
 	},
 

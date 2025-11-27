@@ -1,4 +1,4 @@
-import { client } from './client';
+import { client } from '../client';
 
 type BoardSocket = ReturnType<typeof client.api.ws.board.subscribe>;
 type SendArgs = Parameters<BoardSocket['send']>[0];
