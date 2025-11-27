@@ -27,4 +27,4 @@ dist-ssr
 
 *.db
 
-/server/*.db
+/server/*.dbserver/sqlite.db
