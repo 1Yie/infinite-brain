@@ -177,10 +177,8 @@ export function Whiteboard({ roomId: roomIdProp }: { roomId?: string }) {
 		if (!isConnected) return;
 
 		// 1. 先执行本地撤销操作（立即视觉反馈）
-		// 登录用户只撤销自己的笔画，游客撤销最新的笔画（不区分用户）
-		const strokeId = canvasRef.current?.undo(
-			isLogged && userId ? userId : undefined
-		);
+		// 撤销当前用户的最新笔画
+		const strokeId = canvasRef.current?.undo(userId || undefined);
 		// 2. 发送撤销请求给后端（服务器同步）
 		if (strokeId) {
 			sendUndo(strokeId);

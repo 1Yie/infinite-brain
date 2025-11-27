@@ -8,6 +8,10 @@ import { Register } from '../pages/auth/register';
 import { RoomPage } from '../pages/room';
 import { HomePage } from '../pages/home';
 import { SetTitle } from '@/utils/set-title';
+import { GuessDrawLobby } from '../pages/play';
+import { CreateGuessDrawRoom } from '../pages/play/create-room';
+import { JoinGuessDrawRoom } from '../pages/play/join-room';
+import { GuessDrawPage } from '../pages/play/guess-draw';
 
 export const router = createBrowserRouter([
 	{
@@ -44,6 +48,41 @@ export const router = createBrowserRouter([
 				element: (
 					<>
 						<Whiteboard />
+					</>
+				),
+			},
+			{
+				path: 'play/guess-draw',
+				element: (
+					<>
+						<SetTitle title="你猜我画 - 房间列表" />
+						<GuessDrawLobby />
+					</>
+				),
+			},
+			{
+				path: 'play/guess-draw/create',
+				element: (
+					<>
+						<SetTitle title="创建你猜我画房间" />
+						<CreateGuessDrawRoom />
+					</>
+				),
+			},
+			{
+				path: 'play/guess-draw/join',
+				element: (
+					<>
+						<SetTitle title="加入你猜我画房间" />
+						<JoinGuessDrawRoom />
+					</>
+				),
+			},
+			{
+				path: 'play/guess-draw/:roomId',
+				element: (
+					<>
+						<GuessDrawPage />
 					</>
 				),
 			},

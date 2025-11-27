@@ -1,11 +1,8 @@
 import { treaty } from '@elysiajs/eden';
 import type { App } from '../../server';
 
-export const client = treaty<App>(
-	import.meta.env.VITE_API_URL || 'https://board.server.ichiyo.in/',
-	{
-		fetch: {
-			credentials: 'include',
-		},
-	}
-);
+export const client = treaty<App>(import.meta.env.VITE_API_URL || '', {
+	fetch: {
+		credentials: 'include',
+	},
+});

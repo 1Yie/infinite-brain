@@ -1,69 +1,13 @@
 import { Elysia, t } from 'elysia';
-import { db } from '../db';
-import { strokes, userStats } from '../db/schema';
+import { db } from '../../db';
+import { strokes, userStats } from '../../db/schema';
 import { eq, desc, and, asc } from 'drizzle-orm';
-import { optionalAuth } from '../utils/verify';
-import { gameRooms } from './guess-draw';
-
-const DrawDataSchema = t.Object({
-	x: t.Number(),
-	y: t.Number(),
-	prevX: t.Optional(t.Number()),
-	prevY: t.Optional(t.Number()),
-	color: t.Optional(t.String()),
-	size: t.Optional(t.Number()),
-	tool: t.Optional(t.String()),
-});
-
-const StrokePointSchema = t.Object({
-	x: t.Number(),
-	y: t.Number(),
-});
-
-const StrokeFinishSchema = t.Object({
-	id: t.String(),
-	tool: t.String(),
-	color: t.String(),
-	size: t.Number(),
-	points: t.Array(StrokePointSchema),
-	createdAt: t.Optional(t.String()),
-});
-
-const CursorDataSchema = t.Object({
-	x: t.Number(),
-	y: t.Number(),
-});
-
-const MessageSchema = t.Object({
-	type: t.Union([
-		t.Literal('draw'),
-		t.Literal('stroke-finish'),
-		t.Literal('clear'),
-		t.Literal('undo'),
-		t.Literal('redo'),
-		t.Literal('cursor'),
-	]),
-	data: t.Optional(
-		t.Union([DrawDataSchema, StrokeFinishSchema, CursorDataSchema, t.Any()])
-	),
-	strokeId: t.Optional(t.String()), // 用于指定撤销的笔画ID
-});
-
-const GuessDrawMessageSchema = t.Object({
-	type: t.Union([
-		t.Literal('draw'),
-		t.Literal('stroke-finish'),
-		t.Literal('clear'),
-		t.Literal('guess'),
-		t.Literal('game-state'),
-	]),
-	data: t.Optional(t.Any()),
-});
+import { optionalAuth } from '../../utils/verify';
+import { BoardMessageSchema } from '../../types';
 
 const roomUsers = new Map<string, Set<string>>();
-const guessDrawRoomUsers = new Map<string, Set<string>>();
 
-export const websocketRoutes = new Elysia({ prefix: '/ws' })
+export const boardRoute = new Elysia({ prefix: '/ws' })
 	.use(optionalAuth)
 	.derive(() => {
 		return {
@@ -76,7 +20,7 @@ export const websocketRoutes = new Elysia({ prefix: '/ws' })
 			roomId: t.String(),
 		}),
 
-		body: MessageSchema,
+		body: BoardMessageSchema,
 
 		async open(ws) {
 			const user = ws.data.user;
@@ -412,137 +356,6 @@ export const websocketRoutes = new Elysia({ prefix: '/ws' })
 				});
 			}
 		},
-	})
-
-	// 你猜我画游戏的WebSocket路由
-	.ws('/guess-draw', {
-		query: t.Object({
-			roomId: t.String(),
-		}),
-
-		body: GuessDrawMessageSchema,
-
-		async open(ws) {
-			const user = ws.data.user;
-			const userId = user.id.toString();
-			const username = user.name;
-			const { roomId } = ws.data.query;
-
-			if (!guessDrawRoomUsers.has(roomId)) {
-				guessDrawRoomUsers.set(roomId, new Set());
-			}
-			const currentRoom = guessDrawRoomUsers.get(roomId)!;
-			currentRoom.add(userId);
-
-			console.log(
-				`用户 ${username}(${userId}) 进入你猜我画房间 ${roomId} | 当前房间在线: ${currentRoom.size}`
-			);
-
-			ws.subscribe(roomId);
-
-			ws.send({
-				type: 'connected',
-				userId,
-				username,
-				roomId,
-				timestamp: Date.now(),
-			});
-
-			// 发送当前游戏状态
-			const gameState = gameRooms.get(roomId);
-			if (gameState) {
-				ws.send({
-					type: 'game-state',
-					data: gameState,
-					timestamp: Date.now(),
-				});
-			}
-
-			ws.publish(roomId, {
-				type: 'user-joined',
-				userId,
-				username,
-				userCount: currentRoom.size,
-				timestamp: Date.now(),
-			});
-		},
-
-		async message(ws, message) {
-			const user = ws.data.user;
-			const userId = user.id.toString();
-			const { roomId } = ws.data.query;
-
-			const gameState = gameRooms.get(roomId);
-			if (!gameState) {
-				return;
-			}
-
-			const broadcastMsg = {
-				...message,
-				userId,
-				timestamp: Date.now(),
-			};
-
-			switch (message.type) {
-				case 'draw':
-					// 只有当前画者才能发送绘画数据
-					if (gameState.currentDrawer === userId) {
-						ws.publish(roomId, broadcastMsg);
-					}
-					break;
-
-				case 'stroke-finish':
-					// 只有当前画者才能发送绘画数据
-					if (gameState.currentDrawer === userId) {
-						ws.publish(roomId, broadcastMsg);
-					}
-					break;
-
-				case 'clear':
-					// 只有当前画者才能清空画布
-					if (gameState.currentDrawer === userId) {
-						ws.publish(roomId, broadcastMsg);
-					}
-					break;
-
-				case 'guess':
-					// 猜测消息广播给所有人
-					ws.publish(roomId, broadcastMsg);
-					break;
-
-				case 'game-state':
-					// 游戏状态更新广播给所有人
-					ws.publish(roomId, broadcastMsg);
-					break;
-			}
-		},
-
-		close(ws) {
-			const user = ws.data.user;
-			const userId = user.id.toString();
-			const username = user.name;
-			const { roomId } = ws.data.query;
-
-			const currentRoom = guessDrawRoomUsers.get(roomId);
-			if (currentRoom) {
-				currentRoom.delete(userId);
-				if (currentRoom.size === 0) {
-					guessDrawRoomUsers.delete(roomId);
-				}
-
-				console.log(
-					`用户 ${username} 离开你猜我画房间 ${roomId} | 剩余: ${currentRoom.size}`
-				);
-
-				ws.unsubscribe(roomId);
-
-				ws.publish(roomId, {
-					type: 'user-left',
-					userId,
-					username,
-					userCount: currentRoom.size,
-					timestamp: Date.now(),
-				});
-			}
-		},
 	});
+
+export default boardRoute;

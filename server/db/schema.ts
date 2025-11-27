@@ -27,6 +27,70 @@ export const rooms = sqliteTable('rooms', {
 	),
 });
 
+// 你猜我画游戏房间表
+export const guessDrawRooms = sqliteTable('guess_draw_rooms', {
+	id: text('id').primaryKey(),
+	name: text('name').notNull(),
+	ownerId: text('owner_id').notNull(),
+	ownerName: text('owner_name').notNull(),
+	maxPlayers: integer('max_players').notNull().default(8),
+	currentPlayers: integer('current_players').notNull().default(0),
+	totalRounds: integer('total_rounds').notNull().default(3),
+	roundTimeLimit: integer('round_time_limit').notNull().default(60), // 秒
+	isPrivate: integer('is_private', { mode: 'boolean' }).default(false),
+	password: text('password'),
+	status: text('status', { enum: ['waiting', 'playing', 'finished'] })
+		.notNull()
+		.default('waiting'),
+	currentRound: integer('current_round').notNull().default(0),
+	currentDrawerId: text('current_drawer_id'),
+	currentWord: text('current_word'),
+	wordHint: text('word_hint'),
+	roundStartTime: integer('round_start_time', { mode: 'timestamp' }),
+	createdAt: integer('created_at', { mode: 'timestamp' }).default(
+		sql`CURRENT_TIMESTAMP`
+	),
+});
+
+// 你猜我画游戏玩家表
+export const guessDrawPlayers = sqliteTable('guess_draw_players', {
+	id: integer('id').primaryKey({ autoIncrement: true }),
+	roomId: text('room_id')
+		.notNull()
+		.references(() => guessDrawRooms.id, { onDelete: 'cascade' }),
+	userId: text('user_id').notNull(),
+	username: text('username').notNull(),
+	score: integer('score').notNull().default(0),
+	hasGuessed: integer('has_guessed', { mode: 'boolean' }).default(false),
+	isDrawing: integer('is_drawing', { mode: 'boolean' }).default(false),
+	joinedAt: integer('joined_at', { mode: 'timestamp' }).default(
+		sql`CURRENT_TIMESTAMP`
+	),
+});
+
+// 你猜我画游戏已使用词语表
+export const guessDrawUsedWords = sqliteTable('guess_draw_used_words', {
+	id: integer('id').primaryKey({ autoIncrement: true }),
+	roomId: text('room_id')
+		.notNull()
+		.references(() => guessDrawRooms.id, { onDelete: 'cascade' }),
+	word: text('word').notNull(),
+	usedAt: integer('used_at', { mode: 'timestamp' }).default(
+		sql`CURRENT_TIMESTAMP`
+	),
+});
+
+// 词库表
+export const guessDrawWords = sqliteTable('guess_draw_words', {
+	id: integer('id').primaryKey({ autoIncrement: true }),
+	word: text('word').notNull().unique(),
+	category: text('category').notNull().default('通用'),
+	difficulty: integer('difficulty').notNull().default(1), // 1-5难度等级
+	createdAt: integer('created_at', { mode: 'timestamp' }).default(
+		sql`CURRENT_TIMESTAMP`
+	),
+});
+
 export const strokes = sqliteTable('strokes', {
 	id: text('id').primaryKey(),
 
@@ -94,3 +158,32 @@ export const strokesRelations = relations(strokes, ({ one }) => ({
 		references: [rooms.id],
 	}),
 }));
+
+// 你猜我画游戏关系
+export const guessDrawRoomsRelations = relations(
+	guessDrawRooms,
+	({ many }) => ({
+		players: many(guessDrawPlayers),
+		usedWords: many(guessDrawUsedWords),
+	})
+);
+
+export const guessDrawPlayersRelations = relations(
+	guessDrawPlayers,
+	({ one }) => ({
+		room: one(guessDrawRooms, {
+			fields: [guessDrawPlayers.roomId],
+			references: [guessDrawRooms.id],
+		}),
+	})
+);
+
+export const guessDrawUsedWordsRelations = relations(
+	guessDrawUsedWords,
+	({ one }) => ({
+		room: one(guessDrawRooms, {
+			fields: [guessDrawUsedWords.roomId],
+			references: [guessDrawRooms.id],
+		}),
+	})
+);
