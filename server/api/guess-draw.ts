@@ -26,23 +26,28 @@ export const guessDrawRoutes = new Elysia({ prefix: '/guess-draw' })
 
 	// 获取房间列表
 	.get('/rooms', () => {
-		const rooms = Array.from(gameRooms.entries()).map(([id, gameState]) => ({
-			id,
-			name: id,
-			ownerId: gameState.players[0]?.userId || '',
-			ownerName: gameState.players[0]?.username || '未知',
-			maxPlayers: 8,
-			currentPlayers: gameState.players.length,
-			rounds: gameState.totalRounds,
-			roundTime: gameState.roundTimeLimit,
-			isPrivate: false,
-			status: (gameState.isActive ? 'playing' : 'waiting') as
-				| 'waiting'
-				| 'playing'
-				| 'finished',
-			createdAt: new Date().toISOString(),
-		}));
+		const rooms = Array.from(gameRooms.entries()).map(([id, gameState]) => {
+			const roomData = {
+				id,
+				name: id,
+				ownerId: gameState.players[0]?.userId || '',
+				ownerName: gameState.players[0]?.username || '未知',
+				maxPlayers: 8,
+				currentPlayers: gameState.players.length,
+				rounds: gameState.totalRounds,
+				roundTime: gameState.roundTimeLimit,
+				isPrivate: false,
+				status: (gameState.isActive ? 'playing' : 'waiting') as
+					| 'waiting'
+					| 'playing'
+					| 'finished',
+				createdAt: new Date().toISOString(),
+			};
+			console.log(`房间 ${id} 数据:`, roomData);
+			return roomData;
+		});
 
+		console.log(`总共 ${rooms.length} 个房间`);
 		return {
 			success: true,
 			data: {

@@ -28,6 +28,7 @@ import {
 	Loader2,
 	RotateCcw,
 	Send, // 假如你没有安装 lucide-react 的 Send，可以删掉这个引用，下面按钮里用文字代替
+	Gamepad2,
 } from 'lucide-react';
 
 type SocketType = ReturnType<typeof guessDrawWsApi.connect>;
@@ -39,6 +40,7 @@ export function GuessDrawPage() {
 	const gameStateRef = useRef<GameState | null>(null);
 	const socketRef = useRef<SocketType | null>(null);
 	const canvasRef = useRef<WhiteboardCanvasHandle>(null);
+	const chatMessagesRef = useRef<HTMLDivElement>(null);
 
 	// 游戏状态
 	const [gameState, setGameState] = useState<GameState | null>(null);
@@ -105,6 +107,13 @@ export function GuessDrawPage() {
 		gameState?.roundStartTime,
 		gameState?.roundTimeLimit,
 	]);
+
+	// 自动滚动到最新消息
+	useEffect(() => {
+		if (chatMessagesRef.current) {
+			chatMessagesRef.current.scrollTop = chatMessagesRef.current.scrollHeight;
+		}
+	}, [chatMessages]);
 
 	// =================================================================
 	// WebSocket 连接与事件处理
@@ -465,8 +474,8 @@ export function GuessDrawPage() {
 			<div className="flex min-h-screen items-center justify-center">
 				<div className="text-center">
 					<p className="text-lg text-gray-600">房间不存在</p>
-					<Button onClick={() => navigate('/room')} className="mt-4">
-						返回房间列表
+					<Button onClick={() => navigate('/play')} className="mt-4">
+						返回大厅
 					</Button>
 				</div>
 			</div>
@@ -480,44 +489,47 @@ export function GuessDrawPage() {
 		<div className="flex h-screen w-full flex-col overflow-hidden bg-gray-50">
 			<SetTitle title={`你猜我画 - 房间 ${roomId}`} />
 
-			{/* 顶部导航栏：固定高度，不收缩 */}
-			<header className="z-10 flex h-14 flex-none items-center justify-between border-b bg-white px-4 shadow-sm">
-				<div className="flex items-center gap-4">
-					<Button
-						variant="ghost"
-						size="sm"
-						onClick={() => navigate('/room')}
-						className="text-gray-600 hover:bg-gray-100"
-					>
-						<ArrowLeft className="mr-1 h-4 w-4" /> 退出
-					</Button>
-					<div className="flex items-center gap-2">
-						<span className="font-bold text-gray-800">你猜我画</span>
-						<Badge
-							variant="outline"
-							className="font-mono text-xs text-gray-500"
+			{/* 顶部导航栏 */}
+			<header className="sticky top-0 z-10 border-b bg-white px-4 py-3 shadow-sm sm:px-6 lg:px-8">
+				<div className="mx-auto flex max-w-7xl items-center justify-between">
+					<div className="flex items-center gap-4">
+						<Button
+							variant="ghost"
+							size="sm"
+							onClick={() => navigate('/play/guess-draw')}
+							className="text-gray-600"
 						>
-							{roomId}
-						</Badge>
+							<ArrowLeft className="mr-1 h-4 w-4" /> 返回大厅
+						</Button>
+						<div className="flex items-center gap-2 border-l pl-4">
+							<Gamepad2 className="h-5 w-5 text-gray-900" />
+							<h1 className="text-lg font-bold text-gray-900">你猜我画</h1>
+							<Badge
+								variant="outline"
+								className="px-2 py-1 font-mono text-xs text-gray-700"
+							>
+								{roomId}
+							</Badge>
+						</div>
 					</div>
-				</div>
 
-				<div className="flex items-center gap-3">
-					<Badge
-						variant={isConnected ? 'default' : 'destructive'}
-						className="transition-colors"
-					>
-						{isConnected ? '在线' : '离线'}
-					</Badge>
-					<div className="flex items-center gap-1 rounded bg-gray-100 px-2 py-1 text-sm text-gray-600">
-						<Users className="h-3 w-3" />
-						<span>{gameState.players.length}</span>
-					</div>
-					<div className="flex items-center gap-1 rounded bg-gray-100 px-2 py-1 text-sm text-gray-600">
-						<Trophy className="h-3 w-3" />
-						<span>
-							{gameState.currentRound}/{gameState.totalRounds}
-						</span>
+					<div className="flex items-center gap-3">
+						<Badge
+							variant={isConnected ? 'default' : 'destructive'}
+							className="px-2 py-1 transition-colors"
+						>
+							{isConnected ? '在线' : '离线'}
+						</Badge>
+						<div className="flex items-center gap-1 rounded bg-gray-100 px-2 py-1 text-sm text-gray-600">
+							<Users className="h-3 w-3" />
+							<span>{gameState.players.length}</span>
+						</div>
+						<div className="flex items-center gap-1 rounded bg-gray-100 px-2 py-1 text-sm text-gray-600">
+							<Trophy className="h-3 w-3" />
+							<span>
+								{gameState.currentRound}/{gameState.totalRounds}
+							</span>
+						</div>
 					</div>
 				</div>
 			</header>
@@ -745,7 +757,10 @@ export function GuessDrawPage() {
 					</div>
 
 					{/* 消息列表：撑满高度并内部滚动 */}
-					<div className="flex-1 space-y-3 overflow-y-auto bg-white p-4">
+					<div
+						ref={chatMessagesRef}
+						className="flex-1 space-y-3 overflow-y-auto bg-white p-4"
+					>
 						{chatMessages.length === 0 ? (
 							<div className="flex h-full flex-col items-center justify-center text-gray-300">
 								<MessageSquare className="mb-2 h-8 w-8 opacity-20" />
