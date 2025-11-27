@@ -6,21 +6,207 @@ import {
 	type GameState,
 	type GamePlayer,
 } from '../../types';
+import { db } from '../../db';
+import {
+	guessDrawRooms,
+	guessDrawPlayers,
+	guessDrawUsedWords,
+} from '../../db/schema';
+import { eq, and } from 'drizzle-orm';
 
 const roomUsers = new Map<string, Set<string>>();
-const roomGames = new Map<string, GameState>();
 const roundTimers = new Map<string, NodeJS.Timeout>();
+const roomCleanupTimers = new Map<string, NodeJS.Timeout>();
 
 // WebSocket 连接引用（用于广播）
 const roomConnections = new Map<string, Set<WebSocket>>();
 
-export { roomUsers, roomGames };
+// 从数据库获取游戏状态
+async function getGameState(roomId: string): Promise<GameState | null> {
+	try {
+		const room = await db
+			.select()
+			.from(guessDrawRooms)
+			.where(eq(guessDrawRooms.id, roomId))
+			.limit(1);
+
+		if (room.length === 0) {
+			return null;
+		}
+
+		const dbRoom = room[0]!;
+
+		// 获取玩家列表
+		const players = await db
+			.select()
+			.from(guessDrawPlayers)
+			.where(eq(guessDrawPlayers.roomId, roomId));
+
+		// 获取已使用的词语
+		const usedWords = await db
+			.select()
+			.from(guessDrawUsedWords)
+			.where(eq(guessDrawUsedWords.roomId, roomId));
+
+		const gameState: GameState = {
+			mode: 'guess-draw',
+			isActive: dbRoom.status === 'playing',
+			currentRound: dbRoom.currentRound,
+			totalRounds: dbRoom.totalRounds,
+			currentDrawer: dbRoom.currentDrawerId,
+			currentWord: dbRoom.currentWord,
+			wordHint: dbRoom.wordHint,
+			roundStartTime: dbRoom.roundStartTime
+				? new Date(dbRoom.roundStartTime).getTime()
+				: null,
+			roundTimeLimit: dbRoom.roundTimeLimit,
+			players: players.map((p) => ({
+				userId: p.userId,
+				username: p.username,
+				score: p.score,
+				hasGuessed: Boolean(p.hasGuessed),
+				isDrawing: Boolean(p.isDrawing),
+			})),
+			usedWords: usedWords.map((w) => w.word),
+		};
+
+		return gameState;
+	} catch (error) {
+		console.error('Error getting game state:', error);
+		return null;
+	}
+}
+
+// 更新游戏状态到数据库
+async function updateGameState(
+	roomId: string,
+	gameState: Partial<GameState>
+): Promise<void> {
+	try {
+		const updateData: Partial<typeof guessDrawRooms.$inferInsert> = {};
+
+		if (gameState.isActive !== undefined) {
+			updateData.status = gameState.isActive ? 'playing' : 'waiting';
+		}
+		if (gameState.currentRound !== undefined) {
+			updateData.currentRound = gameState.currentRound;
+		}
+		if (gameState.totalRounds !== undefined) {
+			updateData.totalRounds = gameState.totalRounds;
+		}
+		if (gameState.currentDrawer !== undefined) {
+			updateData.currentDrawerId = gameState.currentDrawer;
+		}
+		if (gameState.currentWord !== undefined) {
+			updateData.currentWord = gameState.currentWord;
+		}
+		if (gameState.wordHint !== undefined) {
+			updateData.wordHint = gameState.wordHint;
+		}
+		if (gameState.roundStartTime !== undefined) {
+			updateData.roundStartTime = gameState.roundStartTime
+				? new Date(gameState.roundStartTime)
+				: null;
+		}
+		if (gameState.roundTimeLimit !== undefined) {
+			updateData.roundTimeLimit = gameState.roundTimeLimit;
+		}
+
+		if (Object.keys(updateData).length > 0) {
+			await db
+				.update(guessDrawRooms)
+				.set(updateData)
+				.where(eq(guessDrawRooms.id, roomId));
+		}
+
+		// 更新玩家状态
+		if (gameState.players) {
+			for (const player of gameState.players) {
+				await db
+					.update(guessDrawPlayers)
+					.set({
+						score: player.score,
+						hasGuessed: player.hasGuessed,
+						isDrawing: player.isDrawing,
+					})
+					.where(
+						and(
+							eq(guessDrawPlayers.roomId, roomId),
+							eq(guessDrawPlayers.userId, player.userId)
+						)
+					);
+			}
+		}
+
+		// 更新已使用的词语
+		if (gameState.usedWords) {
+			// 先删除现有的
+			await db
+				.delete(guessDrawUsedWords)
+				.where(eq(guessDrawUsedWords.roomId, roomId));
+
+			// 插入新的
+			if (gameState.usedWords.length > 0) {
+				await db.insert(guessDrawUsedWords).values(
+					gameState.usedWords.map((word) => ({
+						roomId,
+						word,
+					}))
+				);
+			}
+		}
+	} catch (error) {
+		console.error('Error updating game state:', error);
+		throw error;
+	}
+}
+
+// 添加玩家到房间
+async function addPlayerToRoom(
+	roomId: string,
+	userId: string,
+	username: string
+): Promise<void> {
+	try {
+		// 检查玩家是否已存在
+		const existing = await db
+			.select()
+			.from(guessDrawPlayers)
+			.where(
+				and(
+					eq(guessDrawPlayers.roomId, roomId),
+					eq(guessDrawPlayers.userId, userId)
+				)
+			)
+			.limit(1);
+
+		if (existing.length === 0) {
+			await db.insert(guessDrawPlayers).values({
+				roomId,
+				userId,
+				username,
+				score: 0,
+				hasGuessed: false,
+				isDrawing: false,
+			});
+		}
+	} catch (error) {
+		console.error('Error adding player to room:', error);
+		throw error;
+	}
+}
+
+export { roomUsers };
 
 export const gameRoute = new Elysia()
 	.use(optionalAuth)
 	.derive(() => ({ connectionId: crypto.randomUUID() }))
 	.ws('/ws/guess-draw', {
-		query: t.Object({ roomId: t.String() }),
+		query: t.Object({
+			roomId: t.String(),
+			totalRounds: t.Optional(t.String()),
+			roundTimeLimit: t.Optional(t.String()),
+		}),
 		body: GameMessageSchema,
 
 		async open(ws) {
@@ -47,6 +233,9 @@ export const gameRoute = new Elysia()
 			const room = roomUsers.get(roomId)!;
 			room.add(userId);
 
+			// 如果有清理定时器，取消它（因为房间又有人了）
+			clearRoomCleanupTimer(roomId);
+
 			// 发送连接确认给当前用户
 			ws.send({
 				type: 'connected',
@@ -57,20 +246,29 @@ export const gameRoute = new Elysia()
 			});
 
 			// 获取或创建游戏状态
-			let gameState = roomGames.get(roomId);
+			let gameState = await getGameState(roomId);
 			if (!gameState) {
 				console.log(`创建新游戏状态: ${roomId}`);
 				const roomUserIds = Array.from(room);
+
+				// 从查询参数获取自定义设置
+				const totalRounds = ws.data.query?.totalRounds
+					? parseInt(ws.data.query.totalRounds)
+					: 3;
+				const roundTimeLimit = ws.data.query?.roundTimeLimit
+					? parseInt(ws.data.query.roundTimeLimit)
+					: 60;
+
 				gameState = {
 					mode: 'guess-draw',
 					isActive: false,
 					currentRound: 0,
-					totalRounds: 3,
+					totalRounds,
 					currentDrawer: null,
 					currentWord: null,
 					wordHint: null,
 					roundStartTime: null,
-					roundTimeLimit: 60,
+					roundTimeLimit,
 					players: roomUserIds.map((id: string) => ({
 						userId: id,
 						username: id === userId ? username : '',
@@ -80,7 +278,7 @@ export const gameRoute = new Elysia()
 					})),
 					usedWords: [],
 				};
-				roomGames.set(roomId, gameState);
+				await updateGameState(roomId, gameState);
 			}
 
 			// 检查是否是新玩家
@@ -89,6 +287,8 @@ export const gameRoute = new Elysia()
 			);
 			if (!existingPlayer) {
 				console.log(`新玩家加入: ${username}(${userId})`);
+				// 添加玩家到数据库
+				await addPlayerToRoom(roomId, userId, username);
 				gameState.players.push({
 					userId,
 					username,
@@ -135,7 +335,7 @@ export const gameRoute = new Elysia()
 			if (message.type === 'game-start') {
 				console.log(`用户 ${username} 请求开始游戏`);
 				try {
-					const existingGameState = roomGames.get(roomId);
+					const existingGameState = await getGameState(roomId);
 
 					// 如果游戏已经在进行中，忽略
 					if (existingGameState && existingGameState.isActive) {
@@ -178,6 +378,11 @@ export const gameRoute = new Elysia()
 							currentUser.username = username;
 						}
 					} else {
+						// 确保所有玩家都在数据库中
+						for (const playerId of currentRoom) {
+							const playerUsername = playerId === userId ? username : '';
+							await addPlayerToRoom(roomId, playerId, playerUsername);
+						}
 						players = Array.from(currentRoom).map((id) => ({
 							userId: id,
 							username: id === userId ? username : '',
@@ -208,12 +413,13 @@ export const gameRoute = new Elysia()
 						currentWord: null,
 						wordHint: null,
 						roundStartTime: null,
-						roundTimeLimit: 60,
+						roundTimeLimit:
+							message.roundTimeLimit || existingGameState?.roundTimeLimit || 60,
 						players,
 						usedWords: [],
 					};
 
-					roomGames.set(roomId, newGameState);
+					await updateGameState(roomId, newGameState);
 
 					console.log('发送游戏开始通知');
 
@@ -250,7 +456,7 @@ export const gameRoute = new Elysia()
 				return;
 			}
 
-			const gameState = roomGames.get(roomId);
+			const gameState = await getGameState(roomId);
 			if (!gameState) {
 				console.log('游戏状态不存在');
 				return;
@@ -391,7 +597,7 @@ export const gameRoute = new Elysia()
 			}
 		},
 
-		close(ws) {
+		async close(ws) {
 			const { user } = ws.data;
 			const userId = user.id.toString();
 			const username = user.name;
@@ -413,7 +619,7 @@ export const gameRoute = new Elysia()
 
 			room.delete(userId);
 
-			const gameState = roomGames.get(roomId);
+			const gameState = await getGameState(roomId);
 			let playerUsername = username;
 
 			if (gameState) {
@@ -478,7 +684,7 @@ export const gameRoute = new Elysia()
 					broadcastToAll(roomId, victoryMsg);
 
 					// 清理游戏状态
-					roomGames.delete(roomId);
+					await updateGameState(roomId, { isActive: false });
 					clearRoundTimer(roomId);
 
 					// 创建重置的游戏状态并广播
@@ -512,20 +718,43 @@ export const gameRoute = new Elysia()
 
 			// 广播更新后的游戏状态
 			if (gameState) {
-				const updatedStateMsg = {
+				const updatedState = {
 					type: 'game-state',
-					data: gameState,
+					data: {
+						...gameState,
+						players: gameState.players.filter(
+							(p: GamePlayer) => p.userId !== userId
+						),
+					},
 					timestamp: Date.now(),
 				};
-				broadcastToAll(roomId, updatedStateMsg);
+				broadcastToAll(roomId, updatedState);
+				console.log(
+					`向房间 ${roomId} 的 ${connections?.size || 0} 个连接发送消息: game-state`
+				);
 			}
 
-			// 如果房间内的玩家空了，清理资源
-			if (gameState && gameState.players.length === 0) {
-				console.log(`房间 ${roomId} 内的玩家已空，清理资源`);
-				roomUsers.delete(roomId);
-				roomGames.delete(roomId);
-				clearRoundTimer(roomId);
+			// 从数据库中删除该玩家的记录
+			try {
+				await db
+					.delete(guessDrawPlayers)
+					.where(
+						and(
+							eq(guessDrawPlayers.roomId, roomId),
+							eq(guessDrawPlayers.userId, userId)
+						)
+					);
+				console.log(`从数据库删除玩家 ${userId} 的记录`);
+			} catch (error) {
+				console.error('删除玩家记录失败:', error);
+			}
+
+			// 如果房间内的玩家空了，设置清理定时器（10分钟后清理）
+			if (gameState?.players.length === 0) {
+				console.log(
+					`房间 ${roomId} 内已无玩家（数据库中玩家数: ${gameState.players.length}），设置10分钟清理定时器`
+				);
+				scheduleRoomCleanup(roomId);
 			}
 
 			ws.unsubscribe(roomId);
@@ -557,14 +786,14 @@ function broadcastToAll(roomId: string, message: Record<string, unknown>) {
 	});
 }
 
-function startNewRound(
+async function startNewRound(
 	roomId: string,
 	ws: {
 		publish: (roomId: string, message: Record<string, unknown>) => void;
 		data: { user?: { id?: number | string; name?: string } };
 	}
 ) {
-	const gameState = roomGames.get(roomId);
+	const gameState = await getGameState(roomId);
 	if (!gameState) {
 		console.log('游戏状态不存在，无法开始新回合');
 		return;
@@ -665,6 +894,14 @@ function startNewRound(
 	gameState.wordHint = wordHint;
 	gameState.roundStartTime = Date.now();
 
+	await updateGameState(roomId, {
+		currentRound: gameState.currentRound,
+		currentDrawer: gameState.currentDrawer,
+		currentWord: gameState.currentWord,
+		wordHint: gameState.wordHint,
+		roundStartTime: gameState.roundStartTime,
+	});
+
 	console.log(`提示: ${wordHint}`);
 	console.log(
 		`回合开始时间: ${new Date(gameState.roundStartTime).toLocaleTimeString()}`
@@ -706,9 +943,9 @@ function startNewRound(
 
 	// 设置回合定时器
 	clearRoundTimer(roomId);
-	const timer = setTimeout(() => {
+	const timer = setTimeout(async () => {
 		console.log(`回合 ${gameState.currentRound} 时间到`);
-		const currentGame = roomGames.get(roomId);
+		const currentGame = await getGameState(roomId);
 		if (currentGame && currentGame.currentRound === gameState.currentRound) {
 			const timeoutMsg = {
 				type: 'round-end',
@@ -731,7 +968,7 @@ function startNewRound(
 	console.log('====================================\n');
 }
 
-function endGame(
+async function endGame(
 	roomId: string,
 	ws: {
 		publish: (roomId: string, message: Record<string, unknown>) => void;
@@ -741,7 +978,7 @@ function endGame(
 	console.log(`\n========== 游戏结束: ${roomId}  ==========`);
 
 	console.log('WebSocket:', ws.data);
-	const gameState = roomGames.get(roomId);
+	const gameState = await getGameState(roomId);
 	if (!gameState) return;
 
 	// 清除定时器
@@ -750,13 +987,15 @@ function endGame(
 	// 标记游戏结束
 	gameState.isActive = false;
 
+	await updateGameState(roomId, { isActive: false });
+
 	// 按分数排序
 	const finalScores = gameState.players.sort(
 		(a: GamePlayer, b: GamePlayer) => b.score - a.score
 	);
 
 	console.log('最终排名:');
-	finalScores.forEach((p, i) => {
+	finalScores.forEach((p: GamePlayer, i: number) => {
 		console.log(`  ${i + 1}. ${p.username}: ${p.score}分`);
 	});
 
@@ -785,4 +1024,62 @@ function clearRoundTimer(roomId: string) {
 		roundTimers.delete(roomId);
 		console.log(`清除房间 ${roomId} 的定时器`);
 	}
+}
+
+// 清理房间定时器
+function clearRoomCleanupTimer(roomId: string) {
+	const timer = roomCleanupTimers.get(roomId);
+	if (timer) {
+		clearTimeout(timer);
+		roomCleanupTimers.delete(roomId);
+		console.log(`清除房间 ${roomId} 的清理定时器`);
+	}
+}
+
+// 设置房间清理定时器（10分钟后清理空房间）
+function scheduleRoomCleanup(roomId: string) {
+	// 先清除现有的清理定时器
+	clearRoomCleanupTimer(roomId);
+
+	// 设置10分钟后的清理定时器
+	const timer = setTimeout(
+		async () => {
+			console.log(`房间 ${roomId} 清理定时器触发，检查是否需要清理`);
+
+			// 再次检查房间是否为空（基于数据库中的玩家数量）
+			const gameState = await getGameState(roomId);
+			if (!gameState || gameState.players.length === 0) {
+				console.log(`房间 ${roomId} 已空置10分钟，开始清理`);
+
+				// 从内存中删除房间
+				roomUsers.delete(roomId);
+				clearRoundTimer(roomId);
+
+				// 从数据库删除房间及相关数据
+				try {
+					await db
+						.delete(guessDrawPlayers)
+						.where(eq(guessDrawPlayers.roomId, roomId));
+					await db
+						.delete(guessDrawUsedWords)
+						.where(eq(guessDrawUsedWords.roomId, roomId));
+					await db.delete(guessDrawRooms).where(eq(guessDrawRooms.id, roomId));
+					console.log(`房间 ${roomId} 已从数据库删除`);
+				} catch (error) {
+					console.error(`删除房间 ${roomId} 失败:`, error);
+				}
+			} else {
+				console.log(
+					`房间 ${roomId} 仍有 ${gameState.players.length} 个玩家，取消清理`
+				);
+			}
+
+			// 清理定时器引用
+			roomCleanupTimers.delete(roomId);
+		},
+		1 * 60 * 1000
+	); // 10分钟
+
+	roomCleanupTimers.set(roomId, timer);
+	console.log(`设置房间 ${roomId} 的清理定时器（10分钟后清理）`);
 }

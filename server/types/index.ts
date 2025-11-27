@@ -55,6 +55,7 @@ export const GameMessageSchema = t.Object({
 	]),
 	data: t.Optional(t.Any()),
 	totalRounds: t.Optional(t.Number()), // 游戏总轮数
+	roundTimeLimit: t.Optional(t.Number()), // 回合时间限制
 	guess: t.Optional(t.String()), // 猜词内容
 	message: t.Optional(t.String()), // 聊天消息
 });
