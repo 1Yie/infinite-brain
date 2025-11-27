@@ -81,6 +81,13 @@ export function Whiteboard({ roomId: roomIdProp }: { roomId?: string }) {
 				return;
 			}
 
+			// 对于游客用户，直接授权访问
+			if (isLogged === false) {
+				setAuthorized(true);
+				setIsChecking(false);
+				return;
+			}
+
 			try {
 				setIsChecking(true);
 				const room = await roomApi.joinRoom(roomId);
@@ -95,10 +102,10 @@ export function Whiteboard({ roomId: roomIdProp }: { roomId?: string }) {
 			}
 		};
 
-		if (roomId && user) {
+		if (roomId && (user || isLogged === false)) {
 			checkRoomAccess();
 		}
-	}, [roomId, user]);
+	}, [roomId, user, isLogged]);
 
 	useEffect(() => {
 		const unsubscribe = onMessage((message) => {
@@ -169,15 +176,18 @@ export function Whiteboard({ roomId: roomIdProp }: { roomId?: string }) {
 	const handleUndo = useCallback(() => {
 		if (!isConnected) return;
 
-		// 1. 先执行本地撤销操作（立即视觉反馈），只撤销当前用户的笔画
-		const strokeId = canvasRef.current?.undo(userId || undefined);
+		// 1. 先执行本地撤销操作（立即视觉反馈）
+		// 登录用户只撤销自己的笔画，游客撤销最新的笔画（不区分用户）
+		const strokeId = canvasRef.current?.undo(
+			isLogged && userId ? userId : undefined
+		);
 		// 2. 发送撤销请求给后端（服务器同步）
 		if (strokeId) {
 			sendUndo(strokeId);
 		} else {
 			sendUndo();
 		}
-	}, [isConnected, sendUndo, userId]);
+	}, [isConnected, sendUndo, userId, isLogged]);
 
 	// 处理重做
 	const handleRedo = useCallback(() => {

@@ -1,165 +1,120 @@
-import { describe, it, expect, beforeEach, mock } from 'bun:test';
+import { describe, it, expect, vi, beforeEach } from 'bun:test';
+import type { WhiteboardCanvasHandle } from '../pages/white-board/whiteboard-canvas';
 
-// ==============================
-// Mock ResizeObserver
-// ==============================
-
-global.ResizeObserver = mock(() => ({
-	observe: mock(() => {}),
-	unobserve: mock(() => {}),
-	disconnect: mock(() => {}),
-})) as unknown as typeof ResizeObserver;
-
-// ==============================
-// Mock HTMLCanvasElement
-// ==============================
-
-if (!global.HTMLCanvasElement) {
-	global.HTMLCanvasElement = class {
-		width = 800;
-		height = 600;
-
-		getContext = mock(() => ({
-			save: mock(() => {}),
-			restore: mock(() => {}),
-			beginPath: mock(() => {}),
-			moveTo: mock(() => {}),
-			lineTo: mock(() => {}),
-			stroke: mock(() => {}),
-			fillRect: mock(() => {}),
-			setTransform: mock(() => {}),
-			translate: mock(() => {}),
-			scale: mock(() => {}),
-		}));
-	} as unknown as typeof HTMLCanvasElement;
-} else {
-	global.HTMLCanvasElement.prototype.getContext = mock(() => ({
-		save: mock(() => {}),
-		restore: mock(() => {}),
-		beginPath: mock(() => {}),
-		moveTo: mock(() => {}),
-		lineTo: mock(() => {}),
-		stroke: mock(() => {}),
-		fillRect: mock(() => {}),
-		setTransform: mock(() => {}),
-		translate: mock(() => {}),
-		scale: mock(() => {}),
-	}));
-}
-
-// ==============================
-// 测试：白板撤销/重做行为
-// ==============================
-
-describe('WhiteboardCanvas 撤销/重做 - 游客与登录用户对比', () => {
-	let canvasRef: {
-		current: {
-			undo?: (userId?: string) => string | undefined;
-			redo?: () => void;
-		};
-	};
+describe('WhiteboardCanvas 撤销/重做 - 接口层测试', () => {
+	let canvasRef: { current: WhiteboardCanvasHandle | null };
+	let userId: string | null;
 
 	beforeEach(() => {
-		canvasRef = { current: {} };
+		userId = 'user-123';
+		canvasRef = { current: null };
 	});
 
 	describe('游客用户 (无 userId)', () => {
 		it('应该处理游客用户的笔画撤销', () => {
-			const mockUndo = mock(() => 'stroke-123');
-			canvasRef.current = { undo: mockUndo };
+			const undoMock = vi.fn(() => 'stroke-1');
+			canvasRef.current = {
+				undo: undoMock,
+			} as unknown as WhiteboardCanvasHandle;
 
-			const result = canvasRef.current.undo();
-			expect(result).toBe('stroke-123');
-			expect(mockUndo).toHaveBeenCalled();
+			const strokeId = canvasRef.current?.undo();
+			expect(strokeId).toBe('stroke-1');
+			expect(undoMock).toHaveBeenCalled();
 		});
-
 		it('游客不应该撤销其他用户的笔画', () => {
-			const mockUndo = mock(() => undefined);
-			canvasRef.current = { undo: mockUndo };
+			const undoMock = vi.fn(() => undefined); // 游客无法撤销别人笔画
+			canvasRef.current = {
+				undo: undoMock,
+			} as unknown as WhiteboardCanvasHandle;
 
-			const result = canvasRef.current.undo();
-			expect(result).toBeUndefined();
+			const strokeId = canvasRef.current?.undo('other-user');
+			expect(strokeId).toBeUndefined();
+			expect(undoMock).toHaveBeenCalledWith('other-user');
 		});
 	});
 
 	describe('登录用户 (有 userId)', () => {
-		const testUserId = 'test-user-123';
-
 		it('应该处理登录用户的笔画撤销', () => {
-			const mockUndo = mock(() => 'own-stroke-123');
-			canvasRef.current = { undo: mockUndo };
+			const undoMock = vi.fn(() => 'stroke-3');
+			canvasRef.current = {
+				undo: undoMock,
+			} as unknown as WhiteboardCanvasHandle;
 
-			const result = canvasRef.current.undo(testUserId);
-			expect(result).toBe('own-stroke-123');
-			expect(mockUndo).toHaveBeenCalledWith(testUserId);
+			const strokeId = canvasRef.current?.undo(userId!);
+			expect(strokeId).toBe('stroke-3');
+			expect(undoMock).toHaveBeenCalledWith(userId);
 		});
 
 		it('登录用户应该只撤销自己的笔画', () => {
-			const mockUndo = mock(() => 'own-stroke-456');
-			canvasRef.current = { undo: mockUndo };
+			const undoMock = vi.fn((id?: string) =>
+				id === userId ? 'stroke-4' : undefined
+			);
+			canvasRef.current = {
+				undo: undoMock,
+			} as unknown as WhiteboardCanvasHandle;
 
-			const result = canvasRef.current.undo(testUserId);
-			expect(result).toBe('own-stroke-456');
+			const strokeId = canvasRef.current?.undo('other-user');
+			expect(strokeId).toBeUndefined();
+			expect(undoMock).toHaveBeenCalledWith('other-user');
+
+			const myStroke = canvasRef.current?.undo(userId!);
+			expect(myStroke).toBe('stroke-4');
+			expect(undoMock).toHaveBeenCalledWith(userId);
 		});
 
 		it('应该处理重做功能', () => {
-			const mockRedo = mock(() => {});
-			canvasRef.current = { redo: mockRedo };
+			const redoMock = vi.fn();
+			canvasRef.current = {
+				redo: redoMock,
+			} as unknown as WhiteboardCanvasHandle;
 
-			canvasRef.current.redo();
-			expect(mockRedo).toHaveBeenCalled();
+			canvasRef.current?.redo?.();
+			expect(redoMock).toHaveBeenCalled();
 		});
 	});
 
 	describe('跨用户行为', () => {
 		it('应该隔离用户之间的撤销操作', () => {
-			const user1Id = 'user1';
+			const undoMock = vi.fn((id?: string) =>
+				id === userId ? 'stroke-5' : undefined
+			);
+			canvasRef.current = {
+				undo: undoMock,
+			} as unknown as WhiteboardCanvasHandle;
 
-			const mockUndo = mock((userId: string) => {
-				if (userId === user1Id) return 'stroke-user1';
-				return undefined;
-			});
-
-			canvasRef.current = { undo: mockUndo };
-
-			const result = canvasRef.current.undo(user1Id);
-			expect(result).toBe('stroke-user1');
+			expect(canvasRef.current?.undo('other-user')).toBeUndefined();
+			expect(canvasRef.current?.undo(userId!)).toBe('stroke-5');
 		});
 	});
 
 	describe('WebSocket 集成', () => {
 		it('应该为登录用户发送带有 strokeId 的撤销', () => {
-			const mockSendUndo = mock((strokeId?: string) => {});
-			const strokeId = 'stroke-789';
+			const undoMock = vi.fn(() => 'stroke-6');
+			const sendUndoMock = vi.fn();
+			canvasRef.current = {
+				undo: undoMock,
+			} as unknown as WhiteboardCanvasHandle;
 
-			const isConnected = true;
+			const strokeId = canvasRef.current?.undo(userId!);
+			if (strokeId) sendUndoMock(strokeId);
 
-			if (isConnected) {
-				const localUndoResult = strokeId;
-				if (localUndoResult) {
-					mockSendUndo(localUndoResult);
-				} else {
-					mockSendUndo();
-				}
-			}
-
-			expect(mockSendUndo).toHaveBeenCalledWith(strokeId);
+			expect(undoMock).toHaveBeenCalledWith(userId);
+			expect(sendUndoMock).toHaveBeenCalledWith('stroke-6');
 		});
 
 		it('当没有本地撤销时应该发送不带 strokeId 的撤销', () => {
-			const mockSendUndo = mock((strokeId?: string) => {});
-			const isConnected = true;
+			const undoMock = vi.fn(() => undefined);
+			const sendUndoMock = vi.fn();
+			canvasRef.current = {
+				undo: undoMock,
+			} as unknown as WhiteboardCanvasHandle;
 
-			if (isConnected) {
-				const localUndoResult = undefined;
-				if (localUndoResult) {
-					mockSendUndo(localUndoResult);
-				} else {
-					mockSendUndo();
-				}
-			}
+			const strokeId = canvasRef.current?.undo(userId!);
+			if (strokeId) sendUndoMock(strokeId);
+			else sendUndoMock();
 
-			expect(mockSendUndo).toHaveBeenCalledWith();
+			expect(undoMock).toHaveBeenCalledWith(userId);
+			expect(sendUndoMock).toHaveBeenCalledWith();
 		});
 	});
 });
