@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+// 移除 Card 相关引用，保留 Badge
 import { Badge } from '@/components/ui/badge';
 import {
 	guessDrawApi,
@@ -27,6 +27,7 @@ import {
 	ArrowLeft,
 	Loader2,
 	RotateCcw,
+	Send, // 假如你没有安装 lucide-react 的 Send，可以删掉这个引用，下面按钮里用文字代替
 } from 'lucide-react';
 
 type SocketType = ReturnType<typeof guessDrawWsApi.connect>;
@@ -35,8 +36,9 @@ export function GuessDrawPage() {
 	const navigate = useNavigate();
 	const { roomId } = useParams<{ roomId: string }>();
 	const { user } = useAuth();
-	const canvasRef = useRef<WhiteboardCanvasHandle>(null);
+	const gameStateRef = useRef<GameState | null>(null);
 	const socketRef = useRef<SocketType | null>(null);
+	const canvasRef = useRef<WhiteboardCanvasHandle>(null);
 
 	// 游戏状态
 	const [gameState, setGameState] = useState<GameState | null>(null);
@@ -54,9 +56,6 @@ export function GuessDrawPage() {
 		{ name: string; msg: string; isSystem?: boolean }[]
 	>([]);
 
-	// 倒计时状态
-	const [timeLeft, setTimeLeft] = useState(0);
-
 	// 派生状态 - 确保每次 gameState 变化时重新计算
 	const userId = user?.id?.toString() || '';
 	const currentPlayer = gameState?.players.find((p) => p.userId === userId);
@@ -73,38 +72,32 @@ export function GuessDrawPage() {
 			// Canvas 的 readOnly 会自动响应
 		} else {
 			console.log('👀 切换到猜测者模式');
-			// 猜测者模式：清空输入框
-			setGuessInput('');
+			// 猜测者模式不需要特殊处理
 		}
 	}, [isDrawer, gameState?.isActive]);
 
-	// =================================================================
-	// 倒计时管理
-	// =================================================================
+	// 倒计时状态
+	const [timeLeft, setTimeLeft] = useState(0);
+
+	// 自动更新倒计时
 	useEffect(() => {
 		if (!gameState?.isActive || !gameState?.roundStartTime) {
-			setTimeLeft(0);
+			// 使用setTimeout避免在effect中同步调用setState
+			setTimeout(() => setTimeLeft(0), 0);
 			return;
 		}
 
-		// 立即计算一次
-		const calculateTimeLeft = () => {
+		const updateTimeLeft = () => {
 			const elapsed = (Date.now() - gameState.roundStartTime!) / 1000;
 			const remaining = Math.max(0, gameState.roundTimeLimit - elapsed);
-			return remaining;
+			setTimeLeft(remaining);
 		};
 
-		setTimeLeft(calculateTimeLeft());
+		// 立即更新一次
+		updateTimeLeft();
 
-		// 每100ms更新一次，更流畅
-		const timer = setInterval(() => {
-			const remaining = calculateTimeLeft();
-			setTimeLeft(remaining);
-
-			if (remaining <= 0) {
-				clearInterval(timer);
-			}
-		}, 100);
+		// 每100ms更新一次
+		const timer = setInterval(updateTimeLeft, 100);
 
 		return () => clearInterval(timer);
 	}, [
@@ -144,10 +137,11 @@ export function GuessDrawPage() {
 
 					if (data.data) {
 						// 检查身份是否变化
-						const oldState = gameState;
+						const oldState = gameStateRef.current;
 						const newState = data.data;
 
 						setGameState(newState);
+						gameStateRef.current = newState; // 更新ref
 						setIsLoading(false);
 
 						// 身份变化日志
@@ -230,7 +224,7 @@ export function GuessDrawPage() {
 					]);
 					break;
 
-				case 'round-end':
+				case 'round-end': {
 					console.log(`🏁 回合结束，答案: ${data.word}`);
 
 					let endMessage = '';
@@ -253,18 +247,48 @@ export function GuessDrawPage() {
 						},
 					]);
 					break;
+				}
 
-				case 'game-end':
+				case 'game-end': {
 					console.log('🎊 游戏结束');
+					console.log('🏆 胜利者:', data.winnerName, '原因:', data.reason);
+
+					let endMessage = '游戏结束！';
+					if (data.winnerName) {
+						endMessage = `🎉 ${data.winnerName} 获胜！`;
+					}
+
 					setChatMessages((prev) => [
 						...prev.slice(-19),
 						{
 							name: '系统',
-							msg: '游戏结束！',
+							msg: endMessage,
 							isSystem: true,
 						},
 					]);
+
+					// 重置游戏状态为准备阶段
+					setGameState((prevState) => {
+						if (!prevState) return prevState;
+						return {
+							...prevState,
+							isActive: false,
+							currentRound: 0,
+							currentDrawer: null,
+							currentWord: null,
+							wordHint: null,
+							roundStartTime: null,
+							players: prevState.players.map((p) => ({
+								...p,
+								hasGuessed: false,
+								isDrawing: false,
+							})),
+							usedWords: [],
+						};
+					});
+					gameStateRef.current = null; // 清除ref
 					break;
+				}
 
 				case 'guess-correct':
 					console.log(`✅ ${data.username} 猜对了！获得 ${data.score} 分`);
@@ -315,6 +339,18 @@ export function GuessDrawPage() {
 					}
 					break;
 
+				case 'error':
+					console.error('❌ 服务器错误:', data.message);
+					setChatMessages((prev) => [
+						...prev.slice(-19),
+						{
+							name: '系统',
+							msg: `❌ ${data.message}`,
+							isSystem: true,
+						},
+					]);
+					break;
+
 				default:
 					console.log('❓ 未知消息类型:', data.type);
 			}
@@ -342,7 +378,7 @@ export function GuessDrawPage() {
 				setIsConnected(false);
 			}
 		};
-	}, [roomId, userId]);
+	}, [roomId, userId]); // 移除 gameState 依赖，避免不必要的重连
 
 	// =================================================================
 	// 交互逻辑
@@ -412,7 +448,7 @@ export function GuessDrawPage() {
 	};
 
 	// =================================================================
-	// 渲染
+	// 渲染 (已修改为无 Card、Flex 自适应布局)
 	// =================================================================
 
 	if (isLoading) {
@@ -437,310 +473,344 @@ export function GuessDrawPage() {
 		);
 	}
 
+	const canStart = gameState.players.length >= 2;
+
 	return (
-		<div className="min-h-screen bg-gray-50">
+		// 根容器：固定高度 100vh，无全局滚动
+		<div className="flex h-screen w-full flex-col overflow-hidden bg-gray-50">
 			<SetTitle title={`你猜我画 - 房间 ${roomId}`} />
 
-			{/* 顶部导航栏 */}
-			<header className="border-b bg-white shadow-sm">
-				<div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-					<div className="flex h-16 items-center justify-between">
-						<div className="flex items-center">
-							<Button
-								variant="ghost"
-								onClick={() => navigate('/room')}
-								className="mr-4"
-							>
-								<ArrowLeft className="mr-2 h-4 w-4" /> 退出
-							</Button>
-							<h1 className="text-xl font-semibold">你猜我画</h1>
-							<Badge variant="outline" className="ml-4">
-								房间: {roomId}
-							</Badge>
-						</div>
-						<div className="flex items-center space-x-4">
-							<Badge variant={isConnected ? 'default' : 'destructive'}>
-								{isConnected ? '在线' : '离线'}
-							</Badge>
-							<div className="flex items-center">
-								<Users className="mr-1 h-4 w-4" />
-								<span>{gameState.players.length} 玩家</span>
-							</div>
-							<div className="flex items-center">
-								<Trophy className="mr-1 h-4 w-4" />
-								<span>
-									第 {gameState.currentRound}/{gameState.totalRounds} 回合
-								</span>
-							</div>
-						</div>
+			{/* 顶部导航栏：固定高度，不收缩 */}
+			<header className="z-10 flex h-14 flex-none items-center justify-between border-b bg-white px-4 shadow-sm">
+				<div className="flex items-center gap-4">
+					<Button
+						variant="ghost"
+						size="sm"
+						onClick={() => navigate('/room')}
+						className="text-gray-600 hover:bg-gray-100"
+					>
+						<ArrowLeft className="mr-1 h-4 w-4" /> 退出
+					</Button>
+					<div className="flex items-center gap-2">
+						<span className="font-bold text-gray-800">你猜我画</span>
+						<Badge
+							variant="outline"
+							className="font-mono text-xs text-gray-500"
+						>
+							{roomId}
+						</Badge>
+					</div>
+				</div>
+
+				<div className="flex items-center gap-3">
+					<Badge
+						variant={isConnected ? 'default' : 'destructive'}
+						className="transition-colors"
+					>
+						{isConnected ? '在线' : '离线'}
+					</Badge>
+					<div className="flex items-center gap-1 rounded bg-gray-100 px-2 py-1 text-sm text-gray-600">
+						<Users className="h-3 w-3" />
+						<span>{gameState.players.length}</span>
+					</div>
+					<div className="flex items-center gap-1 rounded bg-gray-100 px-2 py-1 text-sm text-gray-600">
+						<Trophy className="h-3 w-3" />
+						<span>
+							{gameState.currentRound}/{gameState.totalRounds}
+						</span>
 					</div>
 				</div>
 			</header>
 
-			<div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-				<div className="grid grid-cols-1 gap-6 lg:grid-cols-4">
-					{/* 左侧：游戏信息 & 玩家列表 */}
-					<div className="space-y-6 lg:col-span-1">
-						<Card>
-							<CardHeader>
-								<CardTitle>游戏状态</CardTitle>
-							</CardHeader>
-							<CardContent className="space-y-4">
-								{!gameState.isActive ? (
-									<>
-										<div className="rounded-lg bg-slate-100 p-4 text-center">
-											<div className="text-lg font-semibold text-gray-700">
-												准备中...
-											</div>
-											<div className="mt-2 text-sm text-gray-500">
-												等待玩家加入
-											</div>
-										</div>
-										<Button onClick={handleStartGame} className="w-full">
-											<Play className="mr-2 h-4 w-4" /> 开始游戏
-										</Button>
-									</>
-								) : (
-									<>
-										<div className="mb-4 text-center">
-											<div className="font-mono text-3xl font-bold">
-												{Math.ceil(timeLeft)}s
-											</div>
-											<div className="text-sm text-gray-500">剩余时间</div>
-										</div>
-
-										<div className="rounded-lg bg-slate-100 p-4 text-center">
-											{isDrawer ? (
-												<>
-													<div className="mb-1 text-sm text-gray-500">
-														你要画的词是
-													</div>
-													<div className="text-primary text-2xl font-bold">
-														{currentWord}
-													</div>
-												</>
-											) : (
-												<>
-													<div className="mb-1 text-sm text-gray-500">提示</div>
-													<div className="font-mono text-xl tracking-widest">
-														{gameState.wordHint || '等待中...'}
-													</div>
-												</>
-											)}
-										</div>
-
-										<div className="flex items-center justify-between text-sm">
-											<span>当前画者:</span>
-											<Badge variant="secondary">
-												{gameState.players.find(
-													(p) => p.userId === gameState.currentDrawer
-												)?.username || '未知'}
-											</Badge>
-										</div>
-									</>
-								)}
-							</CardContent>
-						</Card>
-
-						<Card>
-							<CardHeader>
-								<CardTitle className="text-base">玩家排行</CardTitle>
-							</CardHeader>
-							<CardContent className="p-2">
-								{gameState.players
-									.sort((a, b) => b.score - a.score)
-									.map((player) => (
-										<div
-											key={player.userId}
-											className={`flex items-center justify-between rounded p-2 ${
-												player.userId === gameState.currentDrawer
-													? 'bg-blue-50'
-													: ''
-											}`}
+			{/* 主内容区域：Flex 布局，自动撑满剩余高度 */}
+			<div className="flex flex-1 gap-4 overflow-hidden p-4">
+				{/* 左侧栏：游戏信息 & 玩家列表 (固定宽度) */}
+				<div className="hidden w-64 flex-none flex-col gap-4 lg:flex">
+					{/* 游戏状态面板 */}
+					<div className="flex flex-none flex-col overflow-hidden rounded-xl border bg-white shadow-sm">
+						<div className="border-b bg-gray-50/50 px-4 py-3">
+							<h3 className="text-sm font-semibold text-gray-700">状态</h3>
+						</div>
+						<div className="p-4">
+							{!gameState.isActive ? (
+								<div className="space-y-3">
+									<div className="rounded-lg border border-slate-100 bg-slate-50 p-3 text-center">
+										<p className="text-sm text-gray-500">等待开始</p>
+										<p className="mt-1 text-xs text-gray-400">需至少2人</p>
+									</div>
+									<Button
+										onClick={handleStartGame}
+										className="w-full"
+										disabled={!canStart}
+									>
+										<Play className="mr-2 h-4 w-4" /> 开始
+									</Button>
+								</div>
+							) : (
+								<div className="space-y-4">
+									<div className="text-center">
+										<span
+											className={`font-mono text-4xl font-bold ${Math.ceil(timeLeft) <= 10 ? 'text-red-500' : 'text-gray-800'}`}
 										>
-											<div className="flex items-center gap-2">
-												<CircleUser className="h-5 w-5 text-gray-500" />
+											{Math.ceil(timeLeft)}
+										</span>
+										<span className="mt-1 block text-xs text-gray-400">
+											剩余时间
+										</span>
+									</div>
+
+									<div className="rounded-lg border border-blue-100 bg-blue-50/50 p-3 text-center">
+										{isDrawer ? (
+											<>
+												<div className="mb-1 text-xs text-blue-400">
+													目标词汇
+												</div>
+												<div className="text-lg font-bold break-words text-blue-600">
+													{currentWord}
+												</div>
+											</>
+										) : (
+											<>
+												<div className="mb-1 text-xs text-gray-400">提示</div>
+												<div className="font-mono text-xl tracking-[0.2em] text-gray-800">
+													{gameState.wordHint || '...'}
+												</div>
+											</>
+										)}
+									</div>
+
+									<div className="flex items-center justify-between px-1 text-xs">
+										<span className="text-gray-500">画者</span>
+										<Badge
+											variant="outline"
+											className="max-w-[100px] truncate bg-white"
+										>
+											{gameState.players.find(
+												(p) => p.userId === gameState.currentDrawer
+											)?.username || '未知'}
+										</Badge>
+									</div>
+								</div>
+							)}
+						</div>
+					</div>
+
+					{/* 玩家列表：自适应高度 (flex-1) 并内部滚动 */}
+					<div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border bg-white shadow-sm">
+						<div className="flex items-center justify-between border-b bg-gray-50/50 px-4 py-3">
+							<h3 className="text-sm font-semibold text-gray-700">排行榜</h3>
+						</div>
+						<div className="flex-1 space-y-1 overflow-y-auto p-2">
+							{gameState.players
+								.sort((a, b) => b.score - a.score)
+								.map((player) => (
+									<div
+										key={player.userId}
+										className={`flex items-center justify-between rounded-lg p-2 text-sm transition-colors ${
+											player.userId === gameState.currentDrawer
+												? 'border border-blue-100 bg-blue-50'
+												: 'border border-transparent hover:bg-gray-50'
+										}`}
+									>
+										<div className="flex min-w-0 items-center gap-2">
+											<div
+												className={`flex h-8 w-8 flex-none items-center justify-center rounded-full ${player.userId === userId ? 'bg-primary/10 text-primary' : 'bg-gray-100 text-gray-400'}`}
+											>
+												<CircleUser className="h-4 w-4" />
+											</div>
+											<div className="flex min-w-0 flex-col">
 												<span
-													className={`text-sm ${
-														player.userId === userId ? 'font-bold' : ''
-													}`}
+													className={`truncate text-xs ${player.userId === userId ? 'font-bold' : 'font-medium'}`}
 												>
 													{player.username}
 												</span>
 												{player.isDrawing && (
-													<Pencil className="h-3 w-3 text-blue-500" />
-												)}
-												{player.hasGuessed && (
-													<Badge
-														className="px-1 py-0 text-[10px]"
-														variant="default"
-													>
-														已猜对
-													</Badge>
+													<span className="flex items-center gap-1 text-[10px] text-blue-500">
+														<Pencil className="h-3 w-3" />
+														正在画
+													</span>
 												)}
 											</div>
-											<span className="font-mono font-bold">
-												{player.score}
-											</span>
 										</div>
-									))}
-							</CardContent>
-						</Card>
-					</div>
-
-					{/* 中间：画布 */}
-					<div className="lg:col-span-2">
-						<Card className="flex h-full flex-col">
-							<CardHeader className="flex flex-row items-center justify-between space-y-0 border-b px-4 py-3">
-								<CardTitle className="text-base">画布</CardTitle>
-								{isDrawer && gameState.isActive && (
-									<div className="flex items-center space-x-2">
-										<Button
-											variant={tool === 'pen' ? 'default' : 'ghost'}
-											size="icon"
-											className="h-8 w-8"
-											onClick={() => setTool('pen')}
-										>
-											<Pencil className="h-4 w-4" />
-										</Button>
-										<Button
-											variant={tool === 'eraser' ? 'default' : 'ghost'}
-											size="icon"
-											className="h-8 w-8"
-											onClick={() => setTool('eraser')}
-										>
-											<Eraser className="h-4 w-4" />
-										</Button>
-										<div className="mx-2 h-6 w-px bg-gray-200"></div>
-										<input
-											type="color"
-											value={color}
-											onChange={(e) => setColor(e.target.value)}
-											className="h-8 w-8 cursor-pointer rounded border-0 p-0"
-											title="选择颜色"
-										/>
-										<input
-											type="range"
-											min="1"
-											max="20"
-											value={size}
-											onChange={(e) => setSize(Number(e.target.value))}
-											className="accent-primary w-20"
-											title="笔刷大小"
-										/>
-										<div className="mx-2 h-6 w-px bg-gray-200"></div>
-										<Button
-											variant="ghost"
-											size="icon"
-											className="h-8 w-8 text-red-500 hover:bg-red-50 hover:text-red-600"
-											onClick={handleClearCanvas}
-										>
-											<RotateCcw className="h-4 w-4" />
-										</Button>
-									</div>
-								)}
-							</CardHeader>
-							<CardContent className="relative flex-1 cursor-crosshair bg-white p-0">
-								<div className="h-[500px] w-full">
-									<WhiteboardCanvas
-										ref={canvasRef}
-										tool={tool}
-										color={color}
-										size={size}
-										readOnly={!isDrawer || !gameState.isActive}
-										roomId={roomId || ''}
-										onStrokeFinished={handleStrokeFinished}
-										onRealtimeDraw={handleRealtimeDraw}
-										key={`canvas-${isDrawer}-${gameState.currentRound}`}
-									/>
-								</div>
-								{!gameState.isActive && (
-									<div className="absolute inset-0 flex items-center justify-center bg-black/5 backdrop-blur-[1px]">
-										<span className="font-medium text-gray-500">
-											等待游戏开始...
-										</span>
-									</div>
-								)}
-								{gameState.isActive && !isDrawer && (
-									<div className="absolute inset-0 flex items-center justify-center bg-transparent">
-										<span className="rounded-lg bg-black/70 px-4 py-2 font-medium text-white">
-											👀 观看中...
-										</span>
-									</div>
-								)}
-							</CardContent>
-						</Card>
-					</div>
-
-					{/* 右侧：聊天与猜测 */}
-					<div className="flex h-[600px] flex-col space-y-6 lg:col-span-1">
-						<Card className="flex flex-1 flex-col">
-							<CardHeader className="border-b px-4 py-3">
-								<CardTitle className="flex items-center text-base">
-									<MessageSquare className="mr-2 h-4 w-4" /> 聊天 / 猜测
-								</CardTitle>
-							</CardHeader>
-							<CardContent className="flex min-h-0 flex-1 flex-col p-0">
-								{/* 消息列表 */}
-								<div className="flex-1 space-y-2 overflow-y-auto p-4">
-									{chatMessages.map((msg, idx) => (
-										<div
-											key={idx}
-											className={`text-sm ${msg.isSystem ? 'text-center' : ''}`}
-										>
-											{msg.isSystem ? (
-												<span className="text-gray-500 italic">{msg.msg}</span>
-											) : (
-												<>
-													<span className="font-bold text-gray-700">
-														{msg.name}:
-													</span>
-													<span className="ml-1 text-gray-600">{msg.msg}</span>
-												</>
+										<div className="text-right">
+											<div className="font-mono font-bold text-gray-700">
+												{player.score}
+											</div>
+											{player.hasGuessed && (
+												<Badge className="h-4 border-0 bg-green-500 px-1 text-[9px] hover:bg-green-600">
+													已猜对
+												</Badge>
 											)}
 										</div>
-									))}
-									{chatMessages.length === 0 && (
-										<div className="mt-10 text-center text-sm text-gray-400">
-											暂无消息
+									</div>
+								))}
+						</div>
+					</div>
+				</div>
+
+				{/* 中间：画布区域 (自适应撑满) */}
+				<div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl border bg-white shadow-sm">
+					{/* 工具栏 */}
+					<div className="z-20 flex h-12 flex-none items-center justify-between border-b bg-white px-4">
+						<div className="flex items-center gap-2 text-sm font-medium text-gray-500">
+							<Pencil className="h-4 w-4" /> 画布
+						</div>
+						{isDrawer && gameState.isActive && (
+							<div className="flex items-center gap-3">
+								<div className="flex rounded-lg bg-gray-100 p-0.5">
+									<Button
+										variant={tool === 'pen' ? 'default' : 'ghost'}
+										size="icon"
+										className={`h-7 w-7 rounded-md ${tool === 'pen' ? 'shadow-sm' : ''}`}
+										onClick={() => setTool('pen')}
+									>
+										<Pencil className="h-3.5 w-3.5" />
+									</Button>
+									<Button
+										variant={tool === 'eraser' ? 'default' : 'ghost'}
+										size="icon"
+										className={`h-7 w-7 rounded-md ${tool === 'eraser' ? 'shadow-sm' : ''}`}
+										onClick={() => setTool('eraser')}
+									>
+										<Eraser className="h-3.5 w-3.5" />
+									</Button>
+								</div>
+								<div className="mx-1 h-4 w-px bg-gray-200"></div>
+								<input
+									type="color"
+									value={color}
+									onChange={(e) => setColor(e.target.value)}
+									className="h-6 w-6 cursor-pointer overflow-hidden rounded border-0 p-0"
+									title="选择颜色"
+								/>
+								<input
+									type="range"
+									min="1"
+									max="20"
+									value={size}
+									onChange={(e) => setSize(Number(e.target.value))}
+									className="accent-primary h-1.5 w-20 cursor-pointer appearance-none rounded-lg bg-gray-200"
+									title="笔刷大小"
+								/>
+								<div className="mx-1 h-4 w-px bg-gray-200"></div>
+								<Button
+									variant="ghost"
+									size="icon"
+									className="h-7 w-7 rounded-md text-red-500 hover:bg-red-50 hover:text-red-600"
+									onClick={handleClearCanvas}
+								>
+									<RotateCcw className="h-3.5 w-3.5" />
+								</Button>
+							</div>
+						)}
+					</div>
+
+					{/* 画布容器：利用 absolute inset-0 强制撑满父容器 */}
+					<div className="relative flex-1 cursor-crosshair overflow-hidden bg-white">
+						<div className="absolute inset-0">
+							<WhiteboardCanvas
+								ref={canvasRef}
+								tool={tool}
+								color={color}
+								size={size}
+								readOnly={!isDrawer || !gameState.isActive}
+								roomId={roomId || ''}
+								onStrokeFinished={handleStrokeFinished}
+								onRealtimeDraw={handleRealtimeDraw}
+								key={`canvas-${isDrawer}-${gameState.currentRound}`}
+							/>
+						</div>
+						{!gameState.isActive && (
+							<div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-slate-50/60 backdrop-blur-sm">
+								<div className="rounded-2xl border border-gray-100 bg-white p-6 text-center shadow-lg">
+									<RotateCcw className="mx-auto mb-3 h-10 w-10 text-gray-300" />
+									<span className="block font-medium text-gray-600">
+										等待游戏开始
+									</span>
+									<span className="mt-1 block text-xs text-gray-400">
+										画板已锁定
+									</span>
+								</div>
+							</div>
+						)}
+					</div>
+				</div>
+
+				{/* 右侧：聊天与猜测 (固定宽度) */}
+				<div className="hidden w-80 flex-none flex-col overflow-hidden rounded-xl border bg-white shadow-sm lg:flex">
+					<div className="flex h-12 flex-none items-center justify-between border-b bg-gray-50/50 px-4">
+						<h3 className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+							<MessageSquare className="h-4 w-4" /> 消息
+						</h3>
+					</div>
+
+					{/* 消息列表：撑满高度并内部滚动 */}
+					<div className="flex-1 space-y-3 overflow-y-auto bg-white p-4">
+						{chatMessages.length === 0 ? (
+							<div className="flex h-full flex-col items-center justify-center text-gray-300">
+								<MessageSquare className="mb-2 h-8 w-8 opacity-20" />
+								<span className="text-xs">暂无消息</span>
+							</div>
+						) : (
+							chatMessages.map((msg, idx) => (
+								<div
+									key={idx}
+									className={`flex flex-col text-sm ${msg.isSystem ? 'items-center' : ''}`}
+								>
+									{msg.isSystem ? (
+										<span className="my-1 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] text-gray-500">
+											{msg.msg}
+										</span>
+									) : (
+										<div
+											className={`flex flex-col ${msg.name === user?.name ? 'items-end' : 'items-start'}`}
+										>
+											<span className="mb-0.5 px-1 text-[10px] text-gray-400">
+												{msg.name}
+											</span>
+											<div
+												className={`max-w-[90%] rounded-2xl px-3 py-1.5 break-words ${
+													msg.name === user?.name
+														? 'bg-primary text-primary-foreground rounded-tr-none'
+														: 'rounded-tl-none bg-gray-100 text-gray-800'
+												}`}
+											>
+												{msg.msg}
+											</div>
 										</div>
 									)}
 								</div>
-
-								{/* 输入框 */}
-								{gameState.isActive && (
-									<div className="border-t bg-gray-50 p-3">
-										<div className="flex gap-2">
-											<Input
-												placeholder={
-													isDrawer ? '和大家聊聊...' : '输入答案或聊天...'
-												}
-												value={guessInput}
-												onChange={(e) => setGuessInput(e.target.value)}
-												onKeyDown={(e) =>
-													e.key === 'Enter' &&
-													(isDrawer ? handleSendChat() : handleSubmitGuess())
-												}
-												className="bg-white"
-											/>
-											<Button
-												onClick={isDrawer ? handleSendChat : handleSubmitGuess}
-												disabled={!guessInput.trim()}
-												size="sm"
-											>
-												发送
-											</Button>
-										</div>
-										<div className="mt-1 text-center text-[10px] text-gray-400">
-											{isDrawer
-												? '画者只能聊天，不能猜词'
-												: '直接输入答案即可提交'}
-										</div>
-									</div>
-								)}
-							</CardContent>
-						</Card>
+							))
+						)}
 					</div>
+
+					{/* 输入区域 */}
+					{gameState.isActive && (
+						<div className="flex-none border-t bg-gray-50 p-3">
+							<div className="relative">
+								<Input
+									placeholder={isDrawer ? '和大家聊聊...' : '输入答案...'}
+									value={guessInput}
+									onChange={(e) => setGuessInput(e.target.value)}
+									onKeyDown={(e) =>
+										e.key === 'Enter' &&
+										(isDrawer ? handleSendChat() : handleSubmitGuess())
+									}
+									className="border-gray-200 bg-white pr-10 focus-visible:ring-1"
+								/>
+								<button
+									onClick={isDrawer ? handleSendChat : handleSubmitGuess}
+									disabled={!guessInput.trim()}
+									className="hover:text-primary absolute top-1 right-1 p-1.5 text-gray-400 transition-colors disabled:opacity-50"
+								>
+									<Send className="h-4 w-4" />
+								</button>
+							</div>
+							<div className="mt-2 text-center text-[10px] text-gray-400">
+								{isDrawer ? '画者只能聊天，不能猜词' : '直接输入答案即可提交'}
+							</div>
+						</div>
+					)}
 				</div>
 			</div>
 		</div>

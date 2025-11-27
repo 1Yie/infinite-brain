@@ -12,7 +12,7 @@ const roomGames = new Map<string, GameState>();
 const roundTimers = new Map<string, NodeJS.Timeout>();
 
 // WebSocket 连接引用（用于广播）
-const roomConnections = new Map<string, Set<any>>();
+const roomConnections = new Map<string, Set<WebSocket>>();
 
 export const gameRoute = new Elysia()
 	.use(optionalAuth)
@@ -148,6 +148,16 @@ export const gameRoute = new Elysia()
 						ws.send({
 							type: 'error',
 							message: '房间内没有玩家',
+							timestamp: Date.now(),
+						});
+						return;
+					}
+
+					// 检查至少需要2个玩家才能开始游戏
+					if (currentRoom.size < 2) {
+						ws.send({
+							type: 'error',
+							message: '至少需要2个玩家才能开始游戏',
 							timestamp: Date.now(),
 						});
 						return;
@@ -444,6 +454,62 @@ export const gameRoute = new Elysia()
 				timestamp: Date.now(),
 			};
 			broadcastToAll(roomId, userLeftMsg);
+
+			// 检查是否只剩一个人，如果是则让那个人胜利
+			if (gameState && gameState.isActive && room.size === 1) {
+				console.log('房间只剩一个人，宣布胜利者');
+				const remainingPlayerId = Array.from(room)[0];
+				const remainingPlayer = gameState.players.find(
+					(p: GamePlayer) => p.userId === remainingPlayerId
+				);
+
+				if (remainingPlayer) {
+					// 给胜利者加分
+					remainingPlayer.score += 500; // 胜利奖励分
+
+					// 广播胜利消息
+					const victoryMsg = {
+						type: 'game-end',
+						winner: remainingPlayerId,
+						winnerName: remainingPlayer.username,
+						reason: 'last-player-standing',
+						finalScores: gameState.players.sort((a, b) => b.score - a.score),
+						timestamp: Date.now(),
+					};
+					broadcastToAll(roomId, victoryMsg);
+
+					// 清理游戏状态
+					roomGames.delete(roomId);
+					clearRoundTimer(roomId);
+
+					// 创建重置的游戏状态并广播
+					const resetGameState: GameState = {
+						mode: 'guess-draw',
+						isActive: false,
+						currentRound: 0,
+						totalRounds: gameState.totalRounds,
+						currentDrawer: null,
+						currentWord: null,
+						wordHint: null,
+						roundStartTime: null,
+						roundTimeLimit: gameState.roundTimeLimit,
+						players: gameState.players.map((p) => ({
+							...p,
+							hasGuessed: false,
+							isDrawing: false,
+						})),
+						usedWords: [],
+					};
+
+					const resetStateMsg = {
+						type: 'game-state',
+						data: resetGameState,
+						timestamp: Date.now(),
+					};
+					broadcastToAll(roomId, resetStateMsg);
+					return; // 不再执行下面的广播
+				}
+			}
 
 			// 广播更新后的游戏状态
 			if (gameState) {
