@@ -38,9 +38,9 @@ export const WhiteboardToolbar: React.FC<WhiteboardToolbarProps> = ({
 }) => {
 	return (
 		<div className="z-10 shrink-0 border-b border-gray-200 bg-white px-6 py-3">
-			<div className="flex items-center gap-6">
+			<div className="flex items-center gap-6 overflow-x-auto">
 				{/* 工具选择 */}
-				<div className="flex gap-1 rounded-lg bg-gray-100 p-1">
+				<div className="flex shrink-0 gap-1 rounded-lg bg-gray-100 p-1">
 					<Button
 						variant={tool === 'pen' ? 'default' : 'ghost'}
 						onClick={() => setTool('pen')}
@@ -59,10 +59,10 @@ export const WhiteboardToolbar: React.FC<WhiteboardToolbarProps> = ({
 					</Button>
 				</div>
 
-				<div className="h-8 w-px bg-gray-300"></div>
+				<div className="h-8 w-px shrink-0 bg-gray-300"></div>
 
 				{/* 颜色选择 */}
-				<div className="flex items-center gap-3">
+				<div className="flex shrink-0 items-center gap-3">
 					<span className="text-xs font-medium tracking-wider text-gray-500 uppercase">
 						颜色
 					</span>
@@ -113,10 +113,10 @@ export const WhiteboardToolbar: React.FC<WhiteboardToolbarProps> = ({
 					</div>
 				</div>
 
-				<div className="h-8 w-px bg-gray-300"></div>
+				<div className="h-8 w-px shrink-0 bg-gray-300"></div>
 
 				{/* 大小选择 */}
-				<div className="flex items-center gap-3">
+				<div className="flex shrink-0 items-center gap-3">
 					<span className="text-xs font-medium tracking-wider text-gray-500 uppercase">
 						大小
 					</span>
@@ -169,7 +169,7 @@ export const WhiteboardToolbar: React.FC<WhiteboardToolbarProps> = ({
 					variant="secondary"
 					onClick={handleUndo}
 					disabled={!isConnected}
-					className="flex items-center gap-2"
+					className="flex shrink-0 items-center gap-2"
 				>
 					<Undo2 className="h-4 w-4" />
 					撤销
@@ -180,7 +180,7 @@ export const WhiteboardToolbar: React.FC<WhiteboardToolbarProps> = ({
 					variant="secondary"
 					onClick={handleRedo}
 					disabled={!isConnected}
-					className="flex items-center gap-2"
+					className="flex shrink-0 items-center gap-2"
 				>
 					<Redo2 className="h-4 w-4" />
 					撤回
