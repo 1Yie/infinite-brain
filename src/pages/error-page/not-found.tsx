@@ -1,14 +1,12 @@
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import { Home, ArrowLeft } from 'lucide-react';
-import { SetTitle } from '@/utils/set-title';
 
 export function NotFoundPage() {
 	const navigate = useNavigate();
 
 	return (
 		<div className="flex min-h-screen items-center justify-center bg-gray-50">
-			<SetTitle title="页面未找到 - Infinite Board" />
 			<div className="text-center">
 				<div className="mb-8">
 					<h1 className="text-9xl font-bold text-gray-300">404</h1>

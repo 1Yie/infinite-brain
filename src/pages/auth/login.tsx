@@ -134,7 +134,7 @@ export function Login() {
 				<div className="w-full max-w-md space-y-8">
 					<div>
 						<h2 className="mt-6 text-center text-3xl font-extrabold text-zinc-900">
-							登录到 Infinite Board
+							登录到 Infinite Brain
 						</h2>
 						<p className="mt-2 text-center text-sm text-zinc-600">
 							还没有账号？
