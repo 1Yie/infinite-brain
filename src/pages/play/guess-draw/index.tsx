@@ -79,7 +79,7 @@ export function GuessDrawLobby() {
 			const response = await guessDrawApi.joinRoom(roomId);
 
 			if (response.data && response.data.success && response.data.data) {
-				navigate(`/play/guess-draw/${response.data.data.roomId}`);
+				navigate(`/room/guess-draw/${response.data.data.roomId}`);
 			} else if (response.error) {
 				console.log('Join Error:', response.error.value);
 
@@ -107,7 +107,7 @@ export function GuessDrawLobby() {
 		try {
 			const response = await guessDrawApi.joinRoom(searchId.trim());
 			if (response.data && response.data.success && response.data.data) {
-				navigate(`/play/guess-draw/${response.data.data.roomId}`);
+				navigate(`/room/guess-draw/${response.data.data.roomId}`);
 			} else if (response.error) {
 				console.error('Join Error:', response.error.value);
 				const errData = response.error.value as { message?: string };
@@ -124,7 +124,7 @@ export function GuessDrawLobby() {
 	};
 
 	const handleCreateRoom = () => {
-		navigate('/play/guess-draw/create');
+		navigate('/room/guess-draw/create');
 	};
 
 	useEffect(() => {
@@ -169,7 +169,7 @@ export function GuessDrawLobby() {
 							onClick={() => navigate('/room')}
 							className="text-gray-600"
 						>
-							<ArrowLeft className="mr-1 h-4 w-4" /> 返回
+							<ArrowLeft className="mr-1 h-4 w-4" /> 返回大厅
 						</Button>
 						<div className="flex items-center gap-2 border-l pl-4">
 							<Gamepad2 className="h-5 w-5 text-gray-900" />

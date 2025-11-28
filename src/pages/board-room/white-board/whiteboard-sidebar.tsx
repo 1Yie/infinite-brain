@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { roomApi } from '../../api/room';
+import { roomApi } from '../../../api/room';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 
@@ -153,7 +153,7 @@ export const WhiteboardSidebar: React.FC<WhiteboardSidebarProps> = ({
 			{/* 返回房间列表 */}
 			<div className="px-6 pb-4">
 				<Button
-					onClick={() => navigate('/whiteboard')}
+					onClick={() => navigate('/room/whiteboard')}
 					variant="outline"
 					className="w-full"
 				>

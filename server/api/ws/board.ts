@@ -270,24 +270,87 @@ export const boardRoute = new Elysia({ prefix: '/ws' })
 
 				case 'redo':
 					try {
-						// 查找该用户已删除的笔画记录，按创建时间正序排序
-						// 这样可以确保按笔画创建的顺序恢复，而不是按删除顺序
-						const deletedStrokes = await db
-							.select()
-							.from(strokes)
-							.where(
-								and(
-									eq(strokes.userId, userId),
-									eq(strokes.roomId, roomId),
-									eq(strokes.isDeleted, true)
-								)
-							)
-							.orderBy(asc(strokes.createdAt));
+						if (message.data) {
+							// 前端发送了具体的笔画数据，直接广播并保存
+							console.log(
+								`重做笔画: 用户 ${userId}, 笔画ID: ${message.data.id}`
+							);
+							// 尝试更新，如果不存在则插入
+							const existing = await db
+								.select()
+								.from(strokes)
+								.where(eq(strokes.id, message.data.id))
+								.limit(1);
 
-						if (deletedStrokes.length > 0) {
-							// 找到最早创建但被删除的笔画
-							const strokeToRedo = deletedStrokes[0];
-							if (!strokeToRedo) {
+							if (existing.length > 0) {
+								// 存在，标记为未删除
+								await db
+									.update(strokes)
+									.set({ isDeleted: false })
+									.where(eq(strokes.id, message.data.id));
+							} else {
+								// 不存在，插入新笔画
+								await db.insert(strokes).values({
+									id: message.data.id,
+									userId: userId,
+									roomId: roomId,
+									data: message.data,
+									isDeleted: false,
+									createdAt: new Date(message.data.createdAt),
+								});
+							}
+
+							// 广播重做消息
+							ws.publish(roomId, {
+								type: 'redo',
+								data: message.data,
+								userId,
+								timestamp: Date.now(),
+							});
+						} else {
+							// 旧逻辑：查找该用户已删除的笔画记录，按创建时间正序排序
+							// 这样可以确保按笔画创建的顺序恢复，而不是按删除顺序
+							const deletedStrokes = await db
+								.select()
+								.from(strokes)
+								.where(
+									and(
+										eq(strokes.userId, userId),
+										eq(strokes.roomId, roomId),
+										eq(strokes.isDeleted, true)
+									)
+								)
+								.orderBy(asc(strokes.createdAt));
+
+							if (deletedStrokes.length > 0) {
+								// 找到最早创建但被删除的笔画
+								const strokeToRedo = deletedStrokes[0];
+								if (!strokeToRedo) {
+									// 没有可重做的笔画，发送空消息让客户端知道无操作
+									ws.publish(roomId, {
+										type: 'redo',
+										data: null,
+										userId,
+										timestamp: Date.now(),
+									});
+									return;
+								}
+								const strokeId = strokeToRedo.id;
+								console.log(`重做笔画: 用户 ${userId}, 笔画ID: ${strokeId}`);
+								// 恢复已删除的笔画
+								await db
+									.update(strokes)
+									.set({ isDeleted: false })
+									.where(eq(strokes.id, strokeId));
+
+								// 广播重做消息
+								ws.publish(roomId, {
+									type: 'redo',
+									data: strokeToRedo.data,
+									userId,
+									timestamp: Date.now(),
+								});
+							} else {
 								// 没有可重做的笔画，发送空消息让客户端知道无操作
 								ws.publish(roomId, {
 									type: 'redo',
@@ -295,31 +358,7 @@ export const boardRoute = new Elysia({ prefix: '/ws' })
 									userId,
 									timestamp: Date.now(),
 								});
-								return;
 							}
-							const strokeId = strokeToRedo.id;
-							console.log(`重做笔画: 用户 ${userId}, 笔画ID: ${strokeId}`);
-							// 恢复已删除的笔画
-							await db
-								.update(strokes)
-								.set({ isDeleted: false })
-								.where(eq(strokes.id, strokeId));
-
-							// 广播重做消息
-							ws.publish(roomId, {
-								type: 'redo',
-								data: strokeToRedo.data,
-								userId,
-								timestamp: Date.now(),
-							});
-						} else {
-							// 没有可重做的笔画，发送空消息让客户端知道无操作
-							ws.publish(roomId, {
-								type: 'redo',
-								data: null,
-								userId,
-								timestamp: Date.now(),
-							});
 						}
 					} catch (e) {
 						console.error('重做笔画失败:', e);

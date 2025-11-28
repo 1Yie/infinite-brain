@@ -18,7 +18,7 @@ export function RoomGuard({ children }: RoomGuardProps) {
 
 	useEffect(() => {
 		if (!roomId) {
-			navigate('/play/guess-draw');
+			navigate('/room/guess-draw');
 			return;
 		}
 

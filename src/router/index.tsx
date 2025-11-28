@@ -2,7 +2,7 @@ import { createBrowserRouter } from 'react-router-dom';
 import { AppLayout } from '../layout/app-layout';
 import { AuthProvider } from '../context/auth-context';
 import { RequireAuth, AnonymousOnly } from '../components/router/auth-guard';
-import { Whiteboard } from '../pages/white-board';
+import { Whiteboard } from '../pages/board-room/white-board';
 import { Login } from '../pages/auth/login';
 import { Register } from '../pages/auth/register';
 import { RoomPage } from '../pages/room';
@@ -13,13 +13,18 @@ import { CreateGuessDrawRoom } from '../pages/play/guess-draw/create-room';
 import { GuessDrawPage } from '../pages/play/guess-draw/guess-draw';
 import { NotFoundPage } from '../pages/not-found';
 import { RoomGuard } from '../components/router/room-guard';
+import { WhiteboardPage } from '../pages/board-room';
+import { SettingsPage } from '@/pages/settings';
+import { FunctionDocsPage } from '@/pages/docs/function';
+import { ConnectDocsPage } from '@/pages/docs/support/connect';
+import { HelpDocsPage } from '@/pages/docs/support/help';
 
 export const router = createBrowserRouter([
 	{
 		path: '/',
 		element: (
 			<AuthProvider>
-				<SetTitle title="Infinite Board - 无限画布" />
+				<SetTitle title="Infinite Brain - 释放你的创造力" />
 				<HomePage />
 			</AuthProvider>
 		),
@@ -36,16 +41,33 @@ export const router = createBrowserRouter([
 		),
 		children: [
 			{
+				path: 'settings',
+				element: (
+					<>
+						<SetTitle title="Infinite Brain - 设置" />
+						<SettingsPage />
+					</>
+				),
+			},
+			{
 				path: 'room',
 				element: (
 					<>
-						<SetTitle title="Infinite Board - 房间列表" />
+						<SetTitle title="Infinite Brain - 房间列表" />
 						<RoomPage />
 					</>
 				),
 			},
 			{
-				path: 'room/:roomId',
+				path: 'room/whiteboard',
+				element: (
+					<>
+						<WhiteboardPage />
+					</>
+				),
+			},
+			{
+				path: 'room/whiteboard/:roomId',
 				element: (
 					<>
 						<Whiteboard />
@@ -53,7 +75,7 @@ export const router = createBrowserRouter([
 				),
 			},
 			{
-				path: 'play/guess-draw',
+				path: 'room/guess-draw',
 				element: (
 					<>
 						<SetTitle title="你猜我画 - 房间列表" />
@@ -62,7 +84,7 @@ export const router = createBrowserRouter([
 				),
 			},
 			{
-				path: 'play/guess-draw/create',
+				path: 'room/guess-draw/create',
 				element: (
 					<>
 						<SetTitle title="创建你猜我画房间" />
@@ -71,7 +93,7 @@ export const router = createBrowserRouter([
 				),
 			},
 			{
-				path: 'play/guess-draw/:roomId',
+				path: 'room/guess-draw/:roomId',
 				element: (
 					<RoomGuard>
 						<GuessDrawPage />
@@ -79,6 +101,32 @@ export const router = createBrowserRouter([
 				),
 			},
 		],
+	},
+
+	{
+		path: '/product/function',
+		element: (
+			<AuthProvider>
+				<FunctionDocsPage />
+			</AuthProvider>
+		),
+	},
+
+	{
+		path: '/support/connect',
+		element: (
+			<AuthProvider>
+				<ConnectDocsPage />
+			</AuthProvider>
+		),
+	},
+	{
+		path: '/support/help',
+		element: (
+			<AuthProvider>
+				<HelpDocsPage />
+			</AuthProvider>
+		),
 	},
 
 	{

@@ -7,9 +7,11 @@ import { toast } from 'sonner';
 type AuthContextType = {
 	isLogged: boolean | null;
 	user: User | null;
+	setUser: React.Dispatch<React.SetStateAction<User | null>>;
 	login: (username: string, password: string) => Promise<LoginResponse>;
 	logout: () => Promise<LogoutResponse>;
 	handleAuthFailure: () => void;
+	refreshUser: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -78,9 +80,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 		return response;
 	};
 
+	const refreshUser = async () => {
+		try {
+			const res = await authApi.checkAuth();
+			if (res?.success) {
+				setUser((res as { user?: User })?.user || null);
+			}
+		} catch (error) {
+			console.error('Failed to refresh user:', error);
+		}
+	};
+
 	return (
 		<AuthContext.Provider
-			value={{ isLogged, user, login, logout, handleAuthFailure }}
+			value={{
+				isLogged,
+				user,
+				setUser,
+				login,
+				logout,
+				handleAuthFailure,
+				refreshUser,
+			}}
 		>
 			{children}
 		</AuthContext.Provider>

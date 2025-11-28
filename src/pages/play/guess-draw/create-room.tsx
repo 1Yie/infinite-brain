@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-// 移除 Card
+
 import { Label } from '@/components/ui/label';
 import { guessDrawApi } from '@/api/guess-draw';
 import { SetTitle } from '@/utils/set-title';
@@ -45,7 +45,7 @@ export function CreateGuessDrawRoom() {
 			});
 
 			if (response.success && response.data) {
-				navigate(`/play/guess-draw/${response.data.roomId}`);
+				navigate(`/room/guess-draw/${response.data.roomId}`);
 			} else {
 				setError(response.message || '创建房间失败');
 			}
@@ -187,7 +187,7 @@ export function CreateGuessDrawRoom() {
 					<div className="flex gap-3 border-t bg-gray-50/50 p-6">
 						<Button
 							variant="outline"
-							onClick={() => navigate('/play/guess-draw')}
+							onClick={() => navigate('/room/guess-draw')}
 							className="flex-1 bg-white hover:bg-gray-100"
 						>
 							<ArrowLeft className="mr-2 h-4 w-4" />
@@ -196,7 +196,7 @@ export function CreateGuessDrawRoom() {
 						<Button
 							onClick={handleCreateRoom}
 							disabled={isCreating}
-							className="flex-[2] bg-black text-white hover:bg-gray-800"
+							className="flex-2 bg-black text-white hover:bg-gray-800"
 						>
 							{isCreating ? (
 								<>

@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
-import { useWebSocket } from '../../hooks/use-websocket';
-import type { StrokeData } from '../../types/whiteboard';
-import { useAuth } from '../../context/auth-context';
+import { useWebSocket } from '../../../hooks/use-websocket';
+import type { StrokeData } from '../../../types/whiteboard';
+import { useAuth } from '../../../context/auth-context';
 import { WhiteboardSidebar } from './whiteboard-sidebar';
 import { WhiteboardToolbar } from './whiteboard-toolbar';
 import { WhiteboardCanvas } from './whiteboard-canvas';
 import type { WhiteboardCanvasHandle, DrawData } from './whiteboard-canvas';
-import { roomApi, type Room } from '../../api/room';
+import { roomApi, type Room } from '../../../api/room';
 import {
 	AlertDialog,
 	AlertDialogClose,

@@ -35,6 +35,13 @@ export const authApi = {
 		const response = await client.api.auth.logout.post();
 		return response.data || { success: false };
 	},
+
+	/**
+	 * 更新用户资料
+	 */
+	updateProfile: (form: { username?: string; password?: string }) => {
+		return client.api.auth.profile.put(form);
+	},
 };
 
 // types
@@ -45,3 +52,6 @@ export type User = MeData extends { user: infer U } ? U : never;
 export type CheckAuthResponse = Awaited<ReturnType<typeof authApi.checkAuth>>;
 export type LoginResponse = Awaited<ReturnType<typeof authApi.login>>;
 export type LogoutResponse = Awaited<ReturnType<typeof authApi.logout>>;
+export type UpdateProfileResponse = Awaited<
+	ReturnType<typeof authApi.updateProfile>
+>;

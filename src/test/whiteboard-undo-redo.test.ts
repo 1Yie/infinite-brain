@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'bun:test';
-import type { WhiteboardCanvasHandle } from '../pages/white-board/whiteboard-canvas';
+import type { WhiteboardCanvasHandle } from '../pages/board-room/white-board/whiteboard-canvas';
 
 describe('WhiteboardCanvas 撤销/重做 - 接口层测试', () => {
 	let canvasRef: { current: WhiteboardCanvasHandle | null };

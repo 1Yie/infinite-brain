@@ -1,277 +1,294 @@
-import { useEffect, useState, useCallback } from 'react';
-import { roomApi, type Room } from '../../api/room';
-import { useAuth } from '../../context/auth-context';
+import { useNavigate } from 'react-router-dom';
 import {
-	AlertDialog,
-	AlertDialogClose,
-	AlertDialogDescription,
-	AlertDialogPopup,
-	AlertDialogFooter,
-	AlertDialogHeader,
-	AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+	Card,
+	CardContent,
+	CardDescription,
+	CardHeader,
+	CardTitle,
+} from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { RoomSidebar } from './room-sidebar';
-import { RoomContent } from './room-content';
+import { ArrowLeft, LogOut, Settings, User } from 'lucide-react';
+import { useAuth } from '../../context/auth-context';
 
 export function RoomPage() {
+	const navigate = useNavigate();
 	const { user, logout } = useAuth();
-	const [rooms, setRooms] = useState<Room[]>([]);
-	const [loading, setLoading] = useState(true);
-	const [newRoomName, setNewRoomName] = useState('');
-	const [isPrivateRoom, setIsPrivateRoom] = useState(false);
-	const [roomPassword, setRoomPassword] = useState('');
-	const [isCreating, setIsCreating] = useState(false);
-	const [showUserMenu, setShowUserMenu] = useState(false);
-	const [alertMessage, setAlertMessage] = useState('');
-	const [isAlertOpen, setIsAlertOpen] = useState(false);
-	const [isConfirmDeleteOpen, setIsConfirmDeleteOpen] = useState(false);
-	const [roomToDelete, setRoomToDelete] = useState<string | null>(null);
-	const [roomNameToDelete, setRoomNameToDelete] = useState<string>('');
-	const [isJoinDialogOpen, setIsJoinDialogOpen] = useState(false);
-	const [joinRoomId, setJoinRoomId] = useState<string>('');
-	const [joinPassword, setJoinPassword] = useState('');
-	const [userStats, setUserStats] = useState({
-		totalStrokes: 0,
-		todayStrokes: 0,
-		totalPixels: 0,
-		todayPixels: 0,
-	});
 
-	const fetchStats = useCallback(async () => {
-		try {
-			const stats = await roomApi.getUserStats();
-			setUserStats(stats);
-		} catch (error) {
-			console.warn('获取统计数据失败:', error);
+	const handleSelectRoomType = (type: 'whiteboard' | 'guess-draw') => {
+		if (type === 'whiteboard') {
+			navigate('/room/whiteboard');
+		} else if (type === 'guess-draw') {
+			navigate('/room/guess-draw');
 		}
-	}, []);
-
-	const fetchRooms = useCallback(async () => {
-		try {
-			setLoading(true);
-			const data = await roomApi.getRooms();
-			setRooms(data);
-
-			// 获取用户统计数据
-			await fetchStats();
-		} finally {
-			setLoading(false);
-		}
-	}, [fetchStats]);
-
-	useEffect(() => {
-		fetchRooms();
-	}, [fetchRooms]);
-
-	const handleCreateRoom = async (e: React.FormEvent) => {
-		e.preventDefault();
-		if (!newRoomName.trim()) return;
-
-		if (isPrivateRoom && !roomPassword.trim()) {
-			setAlertMessage('请输入房间密码');
-			setIsAlertOpen(true);
-			return;
-		}
-
-		try {
-			setIsCreating(true);
-			const { roomId } = await roomApi.createRoom(
-				newRoomName,
-				isPrivateRoom,
-				isPrivateRoom ? roomPassword : undefined
-			);
-			await fetchRooms();
-			setNewRoomName('');
-			setIsPrivateRoom(false);
-			setRoomPassword('');
-
-			// 如果是创建者，设置房间授权状态，避免跳转后还要输入密码
-			if (isPrivateRoom) {
-				sessionStorage.setItem(`room_auth_${roomId}`, 'true');
-			}
-
-			window.location.href = `/room/${roomId}`;
-		} finally {
-			setIsCreating(false);
-		}
-	};
-
-	const handleEnterRoom = (roomId: string) => {
-		const room = rooms.find((r) => r.id === roomId);
-		if (room?.isPrivate) {
-			setJoinRoomId(roomId);
-			setIsJoinDialogOpen(true);
-		} else {
-			window.location.href = `/room/${roomId}`;
-		}
-	};
-
-	const handleJoinRoom = async () => {
-		try {
-			await roomApi.joinRoom(joinRoomId, joinPassword);
-			sessionStorage.setItem(`room_auth_${joinRoomId}`, 'true');
-			setIsJoinDialogOpen(false);
-			setJoinPassword('');
-			window.location.href = `/room/${joinRoomId}`;
-		} catch (error) {
-			setAlertMessage(error instanceof Error ? error.message : '加入房间失败');
-			setIsAlertOpen(true);
-		}
-	};
-
-	const handleDeleteRoom = async (e: React.MouseEvent, roomId: string) => {
-		e.stopPropagation();
-
-		if (roomId === 'default-room') {
-			setAlertMessage('默认房间不可删除');
-			setIsAlertOpen(true);
-			return;
-		}
-
-		setRoomToDelete(roomId);
-		setRoomNameToDelete(rooms.find((r) => r.id === roomId)?.name || '');
-		setIsConfirmDeleteOpen(true);
 	};
 
 	const handleLogout = async () => {
 		await logout();
+		navigate('/');
 	};
 
-	const confirmDeleteRoom = async () => {
-		if (roomToDelete) {
-			await roomApi.deleteRoom(roomToDelete);
-			setRooms((prev) => prev.filter((r) => r.id !== roomToDelete));
-			setRoomToDelete(null);
-		}
-		setIsConfirmDeleteOpen(false);
-	};
-
-	const renderRoomCreatedAt = (room: Room) => {
-		if (room.id === 'default-room') {
-			return (
-				<span className="flex items-center gap-1.5 text-xs text-zinc-500">
-					<svg
-						className="h-3.5 w-3.5"
-						fill="none"
-						stroke="currentColor"
-						viewBox="0 0 24 24"
-					>
-						<circle cx="12" cy="12" r="10" strokeWidth={2} />
-					</svg>
-					系统默认
-				</span>
-			);
-		}
-
-		return new Date(room.createdAt!).toLocaleDateString('zh-CN', {
-			year: 'numeric',
-			month: '2-digit',
-			day: '2-digit',
-		});
+	const handleSettings = () => {
+		navigate('/settings');
 	};
 
 	return (
-		<div className="flex min-h-screen bg-zinc-50">
-			<RoomSidebar
-				user={user}
-				rooms={rooms}
-				userStats={userStats}
-				showUserMenu={showUserMenu}
-				setShowUserMenu={setShowUserMenu}
-				handleLogout={handleLogout}
-			/>
-
-			<RoomContent
-				user={user}
-				rooms={rooms}
-				loading={loading}
-				newRoomName={newRoomName}
-				setNewRoomName={setNewRoomName}
-				isPrivateRoom={isPrivateRoom}
-				setIsPrivateRoom={setIsPrivateRoom}
-				roomPassword={roomPassword}
-				setRoomPassword={setRoomPassword}
-				isCreating={isCreating}
-				handleCreateRoom={handleCreateRoom}
-				handleEnterRoom={handleEnterRoom}
-				handleDeleteRoom={handleDeleteRoom}
-				renderRoomCreatedAt={renderRoomCreatedAt}
-			/>
-
-			{/* Alert Dialog for default room */}
-			<AlertDialog open={isAlertOpen} onOpenChange={setIsAlertOpen}>
-				<AlertDialogPopup>
-					<AlertDialogHeader>
-						<AlertDialogTitle>提示</AlertDialogTitle>
-						<AlertDialogDescription>{alertMessage}</AlertDialogDescription>
-					</AlertDialogHeader>
-					<AlertDialogFooter>
-						<AlertDialogClose>
-							<Button>确定</Button>
-						</AlertDialogClose>
-					</AlertDialogFooter>
-				</AlertDialogPopup>
-			</AlertDialog>
-
-			{/* Confirm Delete Dialog */}
-			<AlertDialog
-				open={isConfirmDeleteOpen}
-				onOpenChange={setIsConfirmDeleteOpen}
-			>
-				<AlertDialogPopup>
-					<AlertDialogHeader>
-						<AlertDialogTitle>确认删除</AlertDialogTitle>
-						<AlertDialogDescription>
-							确认删除 {roomNameToDelete} ？
-						</AlertDialogDescription>
-					</AlertDialogHeader>
-					<AlertDialogFooter>
-						<AlertDialogClose>
-							<Button variant="outline">取消</Button>
-						</AlertDialogClose>
+		<div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+			{/* 顶部导航栏 */}
+			<header className="sticky top-0 z-10 border-b bg-white px-4 py-3 sm:px-6 lg:px-8 dark:bg-gray-800">
+				<div className="mx-auto flex max-w-7xl items-center justify-between">
+					<div className="flex items-center gap-4">
 						<Button
-							onClick={confirmDeleteRoom}
-							variant="destructive"
-							className="ml-2"
+							variant="ghost"
+							size="sm"
+							onClick={() => navigate('/')}
+							className="text-gray-600 dark:text-gray-400"
 						>
-							确定
+							<ArrowLeft className="mr-1 h-4 w-4" />
+							返回首页
 						</Button>
-					</AlertDialogFooter>
-				</AlertDialogPopup>
-			</AlertDialog>
-
-			{/* Join Room Dialog */}
-			<AlertDialog open={isJoinDialogOpen} onOpenChange={setIsJoinDialogOpen}>
-				<AlertDialogPopup>
-					<AlertDialogHeader>
-						<AlertDialogTitle>加入私密房间</AlertDialogTitle>
-						<AlertDialogDescription>请输入房间密码</AlertDialogDescription>
-					</AlertDialogHeader>
-					<div className="px-6 py-4">
-						<Input
-							type="password"
-							placeholder="输入密码..."
-							value={joinPassword}
-							onChange={(e) => setJoinPassword(e.target.value)}
-							onKeyDown={(e) => {
-								if (e.key === 'Enter') {
-									handleJoinRoom();
-								}
-							}}
-						/>
+						<div className="flex items-center gap-2 border-l pl-4">
+							<svg
+								className="h-5 w-5 text-gray-900 dark:text-gray-100"
+								fill="none"
+								stroke="currentColor"
+								viewBox="0 0 24 24"
+							>
+								<path
+									strokeLinecap="round"
+									strokeLinejoin="round"
+									strokeWidth={2}
+									d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+								/>
+							</svg>
+							<h1 className="text-lg font-bold text-gray-900 dark:text-gray-100">
+								房间选择
+							</h1>
+						</div>
 					</div>
-					<AlertDialogFooter>
-						<AlertDialogClose>
-							<Button variant="outline">取消</Button>
-						</AlertDialogClose>
-						<Button onClick={handleJoinRoom} className="ml-2">
-							加入房间
-						</Button>
-					</AlertDialogFooter>
-				</AlertDialogPopup>
-			</AlertDialog>
+					<div className="flex items-center gap-3">
+						{user && (
+							<span className="flex items-center gap-2 rounded-lg bg-gray-100 px-2 py-1 text-sm text-gray-700 dark:text-gray-300">
+								<User className="h-4 w-4" />
+								{user.name}
+							</span>
+						)}
+
+						<div className="flex items-center gap-1">
+							<Button
+								variant="ghost"
+								size="sm"
+								onClick={handleSettings}
+								className="bg-gray-100 px-2 py-1 text-gray-600 hover:bg-gray-200 dark:text-gray-400"
+							>
+								<Settings className="h-4 w-4" />
+							</Button>
+
+							<Button
+								variant="ghost"
+								size="sm"
+								onClick={handleLogout}
+								className="bg-gray-100 px-2 py-1 text-red-400 hover:bg-gray-200 dark:text-gray-400"
+							>
+								<LogOut className="h-4 w-4" />
+							</Button>
+						</div>
+					</div>
+				</div>
+			</header>
+
+			<div className="mx-auto max-w-4xl p-8">
+				{/* 页面标题 */}
+				<header className="mb-12 text-center">
+					<h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">
+						选择房间类型
+					</h1>
+					<p className="mt-2 text-lg text-gray-600 dark:text-gray-400">
+						选择您想要创建或加入的房间类型
+					</p>
+				</header>
+
+				{/* 房间类型选择 */}
+				<div className="grid grid-cols-1 gap-8 md:grid-cols-2">
+					{/* 白板房间 */}
+					<Card className="cursor-pointer transition-all hover:border-gray-400 hover:shadow-lg">
+						<CardHeader>
+							<CardTitle className="flex items-center gap-3">
+								<svg
+									className="h-8 w-8 text-blue-600"
+									fill="none"
+									stroke="currentColor"
+									viewBox="0 0 24 24"
+								>
+									<path
+										strokeLinecap="round"
+										strokeLinejoin="round"
+										strokeWidth={2}
+										d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+									/>
+								</svg>
+								白板协作
+							</CardTitle>
+							<CardDescription>
+								多人实时协作的白板，支持绘制、文本、形状等元素
+							</CardDescription>
+						</CardHeader>
+						<CardContent>
+							<div className="space-y-4">
+								<div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+									<svg
+										className="h-4 w-4"
+										fill="none"
+										stroke="currentColor"
+										viewBox="0 0 24 24"
+									>
+										<path
+											strokeLinecap="round"
+											strokeLinejoin="round"
+											strokeWidth={2}
+											d="M5 13l4 4L19 7"
+										/>
+									</svg>
+									实时同步绘制
+								</div>
+								<div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+									<svg
+										className="h-4 w-4"
+										fill="none"
+										stroke="currentColor"
+										viewBox="0 0 24 24"
+									>
+										<path
+											strokeLinecap="round"
+											strokeLinejoin="round"
+											strokeWidth={2}
+											d="M5 13l4 4L19 7"
+										/>
+									</svg>
+									多用户协作
+								</div>
+								<div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+									<svg
+										className="h-4 w-4"
+										fill="none"
+										stroke="currentColor"
+										viewBox="0 0 24 24"
+									>
+										<path
+											strokeLinecap="round"
+											strokeLinejoin="round"
+											strokeWidth={2}
+											d="M5 13l4 4L19 7"
+										/>
+									</svg>
+									撤销/重做功能
+								</div>
+								<Button
+									onClick={() => handleSelectRoomType('whiteboard')}
+									className="w-full"
+									size="lg"
+								>
+									进入白板房间
+								</Button>
+							</div>
+						</CardContent>
+					</Card>
+
+					{/* 猜画游戏 */}
+					<Card className="cursor-pointer transition-all hover:border-gray-400 hover:shadow-lg">
+						<CardHeader>
+							<CardTitle className="flex items-center gap-3">
+								<svg
+									className="h-8 w-8 text-green-600"
+									fill="none"
+									stroke="currentColor"
+									viewBox="0 0 24 24"
+								>
+									<path
+										strokeLinecap="round"
+										strokeLinejoin="round"
+										strokeWidth={2}
+										d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
+									/>
+								</svg>
+								猜画游戏
+							</CardTitle>
+							<CardDescription>
+								有趣的猜画游戏，通过绘制和猜测来娱乐和交流
+							</CardDescription>
+						</CardHeader>
+						<CardContent>
+							<div className="space-y-4">
+								<div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+									<svg
+										className="h-4 w-4"
+										fill="none"
+										stroke="currentColor"
+										viewBox="0 0 24 24"
+									>
+										<path
+											strokeLinecap="round"
+											strokeLinejoin="round"
+											strokeWidth={2}
+											d="M5 13l4 4L19 7"
+										/>
+									</svg>
+									趣味猜画模式
+								</div>
+								<div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+									<svg
+										className="h-4 w-4"
+										fill="none"
+										stroke="currentColor"
+										viewBox="0 0 24 24"
+									>
+										<path
+											strokeLinecap="round"
+											strokeLinejoin="round"
+											strokeWidth={2}
+											d="M5 13l4 4L19 7"
+										/>
+									</svg>
+									多人实时互动
+								</div>
+								<div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+									<svg
+										className="h-4 w-4"
+										fill="none"
+										stroke="currentColor"
+										viewBox="0 0 24 24"
+									>
+										<path
+											strokeLinecap="round"
+											strokeLinejoin="round"
+											strokeWidth={2}
+											d="M5 13l4 4L19 7"
+										/>
+									</svg>
+									计分系统
+								</div>
+								<Button
+									onClick={() => handleSelectRoomType('guess-draw')}
+									className="w-full"
+									size="lg"
+								>
+									进入你画我猜
+								</Button>
+							</div>
+						</CardContent>
+					</Card>
+				</div>
+
+				{/* 底部信息 */}
+				<div className="mt-12 text-center">
+					<p className="text-sm text-gray-500 dark:text-gray-400">
+						{user ? (
+							<>欢迎回来，{user.name}！选择一个房间类型开始协作。</>
+						) : (
+							<>请先登录以访问房间功能。</>
+						)}
+					</p>
+				</div>
+			</div>
 		</div>
 	);
 }

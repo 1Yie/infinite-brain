@@ -4,7 +4,7 @@ import { viewStates } from '../db/schema';
 import { eq, and } from 'drizzle-orm';
 import { auth } from '../utils/verify';
 
-export const viewStateApi = new Elysia({ prefix: '/view-state' })
+export const viewStateApi = new Elysia({ prefix: '/board/status' })
 	.use(auth)
 
 	// 获取视图状态

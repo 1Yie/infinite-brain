@@ -46,7 +46,7 @@ import {
 	type WhiteboardCanvasHandle,
 	type DrawData,
 	type StrokeData,
-} from '@/pages/white-board/whiteboard-canvas';
+} from '../../board-room/white-board/whiteboard-canvas';
 import { useAuth } from '@/context/auth-context';
 import { SetTitle } from '@/utils/set-title';
 import {
@@ -541,7 +541,7 @@ export function GuessDrawPage() {
 			<div className="flex min-h-screen items-center justify-center">
 				<div className="text-center">
 					<p className="text-lg text-gray-600">房间不存在</p>
-					<Button onClick={() => navigate('/play/guess-draw')} className="mt-4">
+					<Button onClick={() => navigate('/room/guess-draw')} className="mt-4">
 						返回大厅
 					</Button>
 				</div>
@@ -561,16 +561,16 @@ export function GuessDrawPage() {
 		<div className="flex h-screen w-full flex-col overflow-hidden bg-gray-50">
 			<SetTitle title={`你猜我画 - 房间 ${roomId}`} />
 
-			<header className="sticky top-0 z-10 border-b bg-white px-4 py-3 shadow-sm sm:px-6 lg:px-8">
+			<header className="sticky top-0 z-10 border-b bg-white px-4 py-3 sm:px-6 lg:px-8">
 				<div className="mx-auto flex max-w-7xl items-center justify-between">
 					<div className="flex items-center gap-4">
 						<Button
 							variant="ghost"
 							size="sm"
-							onClick={() => navigate('/play/guess-draw')}
+							onClick={() => navigate('/room/guess-draw')}
 							className="text-gray-600"
 						>
-							<ArrowLeft className="mr-1 h-4 w-4" /> 返回大厅
+							<ArrowLeft className="mr-1 h-4 w-4" /> 返回房间
 						</Button>
 						<div className="flex items-center gap-2 border-l pl-4">
 							<Gamepad2 className="h-5 w-5 text-gray-900" />
@@ -789,11 +789,13 @@ export function GuessDrawPage() {
 											<div className="font-mono font-bold text-gray-700">
 												{player.score}
 											</div>
-											{player.hasGuessed && (
-												<Badge className="h-4 border-0 bg-green-500 px-1 text-[9px] hover:bg-green-600">
-													已猜对
-												</Badge>
-											)}
+											{player.hasGuessed &&
+												player.userId !== userId &&
+												gameState.isActive && (
+													<Badge className="h-4 border-0 bg-green-500 px-1 text-[9px] hover:bg-green-600">
+														已猜对
+													</Badge>
+												)}
 										</div>
 									</div>
 								))}

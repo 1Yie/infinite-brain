@@ -167,4 +167,64 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
 				description: '清除用户 Cookie。',
 			},
 		}
+	)
+
+	.put(
+		'/profile',
+		async ({ body, user, set }) => {
+			// 检查用户名是否已被其他用户使用
+			if (body.username && body.username !== user.name) {
+				const [existingUser] = await db
+					.select()
+					.from(users)
+					.where(eq(users.username, body.username));
+
+				if (existingUser) {
+					set.status = 409;
+					return { success: false, message: '用户名已被使用' };
+				}
+			}
+
+			// 准备更新数据
+			const updateData: Partial<typeof users.$inferInsert> = {};
+
+			if (body.username) {
+				updateData.username = body.username;
+			}
+
+			if (body.password) {
+				updateData.password = await Bun.password.hash(body.password);
+			}
+
+			// 更新用户信息
+			await db.update(users).set(updateData).where(eq(users.id, user.id));
+
+			return {
+				success: true,
+				message: '资料更新成功',
+				user: {
+					id: user.id,
+					name: body.username || user.name,
+				},
+			};
+		},
+		{
+			body: t.Object({
+				username: t.Optional(t.String()),
+				password: t.Optional(t.String()),
+			}),
+			response: {
+				200: t.Object({
+					success: t.Boolean(),
+					message: t.String(),
+					user: UserSchema,
+				}),
+				409: ErrorResponse,
+			},
+			detail: {
+				tags: ['Auth'],
+				summary: '更新用户资料',
+				description: '更新当前用户的用户名或密码。',
+			},
+		}
 	);

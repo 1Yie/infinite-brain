@@ -2,7 +2,7 @@ import { client } from '../client';
 import type {
 	DrawData,
 	StrokeData,
-} from '../../pages/white-board/whiteboard-canvas';
+} from '../../pages/board-room/white-board/whiteboard-canvas';
 
 const createConnection = (roomId: string) => {
 	return client.api.ws['guess-draw'].subscribe({

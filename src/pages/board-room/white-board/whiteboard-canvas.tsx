@@ -7,8 +7,8 @@ import {
 	forwardRef,
 } from 'react';
 import simplify from 'simplify-js';
-import { useAuth } from '../../context/auth-context';
-import { viewStateApi } from '../../api/view-state';
+import { useAuth } from '../../../context/auth-context';
+import { viewStateApi } from '../../../api/view-state';
 
 export interface Point {
 	x: number;

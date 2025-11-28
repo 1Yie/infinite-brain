@@ -19,7 +19,7 @@ export default defineConfig(({ mode }) => ({
 			'@': path.resolve(__dirname, './src'),
 		},
 	},
-	// 生产环境移除 console 和 debugger
+
 	build: {
 		minify: 'esbuild',
 		esbuild: {

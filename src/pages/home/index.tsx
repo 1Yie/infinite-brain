@@ -1,17 +1,17 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { WhiteboardCanvas } from '../white-board/whiteboard-canvas';
-import { WhiteboardToolbar } from '../white-board/whiteboard-toolbar';
+import { WhiteboardCanvas } from '../board-room/white-board/whiteboard-canvas';
+import { WhiteboardToolbar } from '../board-room/white-board/whiteboard-toolbar';
 import type {
 	WhiteboardCanvasHandle,
 	DrawData,
-} from '../white-board/whiteboard-canvas';
+} from '../board-room/white-board/whiteboard-canvas';
 import { useWebSocket } from '../../hooks/use-websocket';
 import type { StrokeData } from '../../types/whiteboard';
 import { DynamicIcon } from 'lucide-react/dynamic';
 import { authApi } from '../../api/auth';
 import { Button } from '../../components/ui/button';
-import { Pen } from 'lucide-react';
+import { Brain } from 'lucide-react';
 
 function FeatureCard({
 	icon: Icon,
@@ -125,8 +125,12 @@ export function HomePage() {
 	const handleRedo = useCallback(() => {
 		if (!isConnected) return;
 
-		// 发送重做请求给后端，由服务器控制重做操作
-		sendRedo();
+		// 本地重做
+		const strokeToRedo = canvasRef.current?.redo();
+		if (strokeToRedo) {
+			// 发送重做的数据给服务器，广播给其他用户
+			sendRedo(strokeToRedo);
+		}
 	}, [isConnected, sendRedo]);
 
 	// 滚动监听
@@ -203,9 +207,9 @@ export function HomePage() {
 			>
 				<div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
 					<div className="flex items-center gap-2 rounded-lg bg-zinc-100 px-3 py-2">
-						<Pen className="h-6 w-6" />
+						<Brain className="h-6 w-6" />
 						<span className="text-lg font-bold tracking-tight">
-							Infinite Board
+							Infinite Brain
 						</span>
 					</div>
 					<div className="flex items-center gap-4">
@@ -240,15 +244,20 @@ export function HomePage() {
 			{/* Hero 区域：白板演示 */}
 			<section className="relative flex min-h-[85vh] flex-col pt-10">
 				<div className="mx-auto mb-8 max-w-3xl px-6 text-center">
-					{/* <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs font-medium text-zinc-600">
+					<div className="mb-4 inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs font-medium text-zinc-600">
 						<span className="relative flex h-2 w-2">
 							<span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75"></span>
 							<span className="relative inline-flex h-2 w-2 rounded-full bg-green-500"></span>
 						</span>
-						多人实时协作演示中
-					</div> */}
+						<span
+							className="cursor-pointer"
+							onClick={() => navigate('/room/guess-draw')}
+						>
+							《你猜我画》现已上线！立刻体验 →
+						</span>
+					</div>
 					<h1 className="mb-4 text-2xl font-extrabold tracking-tight text-zinc-600 sm:text-4xl">
-						Infinite Board
+						Infinite Brain
 					</h1>
 					<h1 className="text-3xl font-extrabold tracking-tight text-zinc-800 sm:text-5xl">
 						让创意{' '}
@@ -318,7 +327,7 @@ export function HomePage() {
 				<div className="mx-auto max-w-7xl px-6">
 					<div className="mb-16 md:text-center">
 						<h2 className="text-3xl font-bold tracking-tight text-zinc-900">
-							为什么选择 Infinite Board？
+							为什么选择 Infinite Brain？
 						</h2>
 						<p className="mt-4 text-zinc-500">摒弃繁杂功能，回归创作本质。</p>
 					</div>
@@ -365,7 +374,7 @@ export function HomePage() {
 						准备好开始创作了吗？
 					</h2>
 					<p className="mb-10 text-lg text-zinc-500">
-						使用 Infinite Board 捕捉稍纵即逝的灵感。
+						使用 Infinite Brain 捕捉稍纵即逝的灵感。
 					</p>
 					<div className="flex flex-col items-center justify-center gap-4 sm:flex-row">
 						{isLogged === true ? (
@@ -402,18 +411,21 @@ export function HomePage() {
 					<div className="grid grid-cols-1 gap-8 md:grid-cols-4">
 						<div>
 							<div className="mb-4 flex items-center gap-2">
-								<Pen className="h-6 w-6" />
-								<h3 className="text-lg font-bold">Infinite Board</h3>
+								<Brain className="h-6 w-6" />
+								<h3 className="text-lg font-bold">Infinite Brain</h3>
 							</div>
 							<p className="text-sm text-zinc-400">
-								让创意无限延伸的白板应用。
+								释放你的创造力，无限延伸你的思维边界。
 							</p>
 						</div>
 						<div>
 							<h4 className="mb-4 text-sm font-semibold">产品</h4>
 							<ul className="space-y-2 text-sm text-zinc-400">
 								<li>
-									<a href="#" className="transition-colors hover:text-white">
+									<a
+										href="/product/function"
+										className="transition-colors hover:text-white"
+									>
 										功能
 									</a>
 								</li>
@@ -423,12 +435,18 @@ export function HomePage() {
 							<h4 className="mb-4 text-sm font-semibold">支持</h4>
 							<ul className="space-y-2 text-sm text-zinc-400">
 								<li>
-									<a href="#" className="transition-colors hover:text-white">
+									<a
+										href="/support/help"
+										className="transition-colors hover:text-white"
+									>
 										帮助中心
 									</a>
 								</li>
 								<li>
-									<a href="#" className="transition-colors hover:text-white">
+									<a
+										href="/support/connect"
+										className="transition-colors hover:text-white"
+									>
 										联系我们
 									</a>
 								</li>
@@ -454,7 +472,7 @@ export function HomePage() {
 					</div>
 					<div className="mt-8 border-t border-zinc-800 pt-8 text-center text-sm text-zinc-400">
 						<p>
-							© {new Date().getFullYear()} Infinite Board. All rights reserved.
+							© {new Date().getFullYear()} Infinite Brain. All rights reserved.
 						</p>
 					</div>
 				</div>
