@@ -890,7 +890,7 @@ export function GuessDrawPage() {
 				</div>
 
 				{/* C. 右侧：聊天与猜测 (lg以上显示, xl以下作为右栏) */}
-				<div className="w-80 flex-none flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm lg:flex">
+				<div className="flex w-80 flex-none flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm lg:flex">
 					<div className="flex h-12 flex-none items-center justify-between border-b border-gray-100 bg-gray-50/50 px-4">
 						<h3 className="flex items-center gap-2 text-sm font-semibold text-gray-700">
 							<MessageSquare className="h-4 w-4" /> 消息

@@ -15,7 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ArrowLeft } from 'lucide-react';
-import { BoardStats } from './board-stats';
+import { BoardStats } from '../board-room/board-stats';
 
 export function WhiteboardPage() {
 	const navigate = useNavigate();

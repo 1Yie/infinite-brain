@@ -11,7 +11,14 @@ import type { StrokeData } from '../../types/whiteboard';
 import { DynamicIcon } from 'lucide-react/dynamic';
 import { authApi } from '../../api/auth';
 import { Button } from '../../components/ui/button';
-import { Brain } from 'lucide-react';
+import {
+	Brain,
+	Pencil,
+	Clock,
+	CircleUser,
+	MessageSquare,
+	Send,
+} from 'lucide-react';
 
 function FeatureCard({
 	icon: Icon,
@@ -51,6 +58,7 @@ export function HomePage() {
 	// UI 状态
 	const [isSticky, setIsSticky] = useState(false);
 	const [isLogged, setIsLogged] = useState<boolean | null>(null);
+	const [currentSlide, setCurrentSlide] = useState(0); // 0: 白板演示, 1: 你猜我画
 
 	// WebSocket - 允许未登录用户也能连接，使用游客身份
 	const {
@@ -138,7 +146,7 @@ export function HomePage() {
 		const handleScroll = () => {
 			if (!triggerRef.current) return;
 			const rect = triggerRef.current.getBoundingClientRect();
-			// 当原工具栏位置滚出视口顶部时，显示吸顶导航
+			// 当触发点滚出视口顶部时，显示吸顶导航
 			setIsSticky(rect.bottom < 80);
 		};
 		window.addEventListener('scroll', handleScroll, { passive: true });
@@ -242,8 +250,11 @@ export function HomePage() {
 			</header>
 
 			{/* Hero 区域：白板演示 */}
-			<section className="relative flex min-h-[85vh] flex-col pt-10">
-				<div className="mx-auto mb-8 max-w-3xl px-6 text-center">
+			<section
+				data-demo-section
+				className="relative flex min-h-[90vh] flex-col pt-10 pb-16"
+			>
+				<div className="mx-auto mb-6 max-w-3xl px-6 text-center">
 					<div className="mb-4 inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs font-medium text-zinc-600">
 						<span className="relative flex h-2 w-2">
 							<span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75"></span>
@@ -264,15 +275,51 @@ export function HomePage() {
 						<span className="text-zinc-400 line-through decoration-zinc-800 decoration-2">
 							受限
 						</span>
-						<span className="ml-2 bg-gradient-to-r from-blue-600 to-violet-600 bg-clip-text text-transparent">
+						<span className="ml-2 bg-linear-to-r from-blue-600 to-violet-600 bg-clip-text text-transparent">
 							无限延伸
 						</span>
 					</h1>
 				</div>
 
+				{/* 轮播切换按钮 */}
+				<div className="mx-auto mb-6 flex max-w-md items-center justify-center gap-2 rounded-lg border border-zinc-200 bg-white p-1 shadow-sm">
+					<button
+						onClick={() => setCurrentSlide(0)}
+						className={`flex-1 rounded-md px-4 py-2 text-sm font-medium transition-all ${
+							currentSlide === 0
+								? 'bg-zinc-900 text-white shadow-sm'
+								: 'text-zinc-600 hover:text-zinc-900'
+						}`}
+					>
+						无限画布
+					</button>
+					<button
+						onClick={() => setCurrentSlide(1)}
+						className={`relative flex-1 rounded-md px-4 py-2 text-sm font-medium transition-all ${
+							currentSlide === 1
+								? 'bg-zinc-900 text-white shadow-sm'
+								: 'text-zinc-600 hover:text-zinc-900'
+						}`}
+					>
+						你猜我画
+						{currentSlide !== 1 && (
+							<span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-red-500"></span>
+						)}
+					</button>
+				</div>
+
+				{/* 统一的吸顶导航触发点 */}
+				<div
+					ref={triggerRef}
+					className="absolute top-full right-0 left-0 h-1"
+				></div>
+
 				{/* 白板容器 */}
 				<div className="relative mx-auto w-full max-w-7xl flex-1 px-4 sm:px-6">
-					<div className="relative h-[600px] overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-50 shadow-sm">
+					{/* 白板演示 */}
+					<div
+						className={`relative h-[500px] overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-50 shadow-sm ${currentSlide === 0 ? 'block' : 'hidden'}`}
+					>
 						{/* 装饰性网格背景 */}
 						<div
 							className="pointer-events-none absolute inset-0 opacity-[0.4]"
@@ -303,8 +350,8 @@ export function HomePage() {
 						)}
 
 						{/* 工具栏位置 */}
-						<div ref={triggerRef} className="absolute right-0 bottom-0 left-0">
-							<div className="bordershadow-lg rounded-xl backdrop-blur supports-[backdrop-filter]:bg-white/60">
+						<div className="absolute right-0 bottom-0 left-0">
+							<div className="bordershadow-lg rounded-xl backdrop-blur supports-backdrop-filter:bg-white/60">
 								<WhiteboardToolbar
 									currentTool={tool}
 									setCurrentTool={setTool}
@@ -317,6 +364,181 @@ export function HomePage() {
 									isConnected={isConnected}
 								/>
 							</div>
+						</div>
+					</div>
+
+					{/* 你猜我画演示 */}
+					<div
+						className={`relative h-[500px] overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-50 shadow-sm ${currentSlide === 1 ? 'block' : 'hidden'}`}
+					>
+						{/* 你猜我画布局 - 参考真实页面 */}
+						<div className="flex h-full gap-4 p-4">
+							{/* 左侧边栏 - 状态面板 */}
+							<div className="hidden w-64 flex-col gap-4 xl:flex">
+								{/* 状态面板 */}
+								<div className="flex flex-none flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm">
+									<div className="flex h-10 flex-none items-center justify-between border-b border-zinc-100 bg-zinc-50 px-3">
+										<h3 className="flex items-center gap-2 text-xs font-semibold text-zinc-700">
+											状态
+										</h3>
+									</div>
+									<div className="p-3">
+										<div className="space-y-3">
+											<div className="rounded border border-slate-100 bg-slate-50 p-2 text-center">
+												<p className="text-xs text-zinc-500">等待开始</p>
+												<p className="mt-1 text-[10px] text-zinc-400">
+													需至少2人
+												</p>
+											</div>
+											<div className="text-center">
+												<span className="font-mono text-2xl font-bold text-zinc-800">
+													45
+												</span>
+												<span className="mt-1 block text-[10px] text-zinc-400">
+													剩余时间
+												</span>
+											</div>
+											<div className="rounded border border-blue-100 bg-blue-50 p-2 text-center">
+												<div className="mb-1 text-[10px] text-zinc-400">
+													提示
+												</div>
+												<div className="font-mono text-sm tracking-widest text-zinc-800">
+													_ _ _ _
+												</div>
+											</div>
+										</div>
+									</div>
+								</div>
+
+								{/* 玩家列表 */}
+								<div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm">
+									<div className="flex h-10 flex-none items-center justify-between border-b border-zinc-100 bg-zinc-50 px-3">
+										<h3 className="flex items-center gap-2 text-xs font-semibold text-zinc-700">
+											排行榜
+										</h3>
+									</div>
+									<div className="flex-1 space-y-1 overflow-y-auto p-2">
+										{[
+											{ name: '玩家A', score: 150, isDrawing: false },
+											{ name: '玩家B', score: 120, isDrawing: true },
+											{ name: '玩家C', score: 90, isDrawing: false },
+										].map((player, idx) => (
+											<div
+												key={idx}
+												className={`flex items-center justify-between rounded p-2 text-xs transition-colors ${
+													player.isDrawing
+														? 'border border-blue-100 bg-blue-50'
+														: 'border border-transparent hover:bg-zinc-50'
+												}`}
+											>
+												<div className="flex min-w-0 items-center gap-2">
+													<div className="flex h-6 w-6 flex-none items-center justify-center rounded-full bg-zinc-100 text-zinc-500">
+														<CircleUser className="h-4 w-4" />
+													</div>
+													<div className="flex min-w-0 flex-col">
+														<span className="truncate text-xs font-medium text-zinc-600">
+															{player.name}
+														</span>
+														{player.isDrawing && (
+															<span className="flex items-center gap-1 text-[9px] text-blue-500">
+																<Pencil className="h-3 w-3" /> 正在画
+															</span>
+														)}
+													</div>
+												</div>
+												<div className="text-right">
+													<div className="font-mono font-bold text-zinc-700">
+														{player.score}
+													</div>
+												</div>
+											</div>
+										))}
+									</div>
+								</div>
+							</div>
+
+							{/* 中间：画布区域 */}
+							<div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm">
+								<div className="flex h-10 flex-none items-center justify-between border-b border-zinc-100 bg-zinc-50 px-3">
+									<div className="flex items-center gap-2 text-xs font-medium text-zinc-500">
+										<Pencil className="h-4 w-4" /> 画布
+									</div>
+								</div>
+								<div className="relative flex-1 cursor-crosshair overflow-hidden bg-white">
+									<div className="absolute inset-0 flex items-center justify-center">
+										<div className="text-center">
+											<Clock className="mx-auto mb-3 h-10 w-10 text-zinc-300" />
+											<h3 className="text-sm font-semibold text-zinc-900">
+												画板区域
+											</h3>
+											<p className="text-xs text-zinc-500">等待游戏开始</p>
+										</div>
+									</div>
+								</div>
+							</div>
+
+							{/* 右侧：聊天区域 */}
+							<div className="flex w-80 flex-none flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm lg:flex">
+								<div className="flex h-10 flex-none items-center justify-between border-b border-zinc-100 bg-zinc-50 px-3">
+									<h3 className="flex items-center gap-2 text-xs font-semibold text-zinc-700">
+										<MessageSquare className="h-4 w-4" /> 消息
+									</h3>
+								</div>
+								<div className="flex-1 space-y-2 overflow-y-auto bg-white p-3">
+									<div className="flex flex-col items-center">
+										<span className="my-1 rounded-full border border-zinc-200 bg-zinc-100 px-2 py-0.5 text-[9px] text-zinc-500">
+											游戏开始！
+										</span>
+									</div>
+									<div className="flex flex-col items-start">
+										<span className="mb-0.5 px-1 text-[9px] text-zinc-400">
+											玩家A
+										</span>
+										<div className="max-w-[90%] rounded-2xl rounded-tl-none bg-zinc-100 px-2 py-1 text-[10px] text-zinc-800">
+											这是一只猫？
+										</div>
+									</div>
+									<div className="flex flex-col items-start">
+										<span className="mb-0.5 px-1 text-[9px] text-zinc-400">
+											玩家B
+										</span>
+										<div className="max-w-[90%] rounded-2xl rounded-tl-none bg-zinc-100 px-2 py-1 text-[10px] text-zinc-800">
+											不对，再猜猜
+										</div>
+									</div>
+									<div className="flex flex-col items-center">
+										<span className="my-1 rounded-full border border-zinc-200 bg-zinc-100 px-2 py-0.5 text-[9px] text-zinc-500">
+											游戏结束！
+										</span>
+									</div>
+									<div className="flex flex-col items-center">
+										<span className="my-1 rounded-full border border-zinc-200 bg-zinc-100 px-2 py-0.5 text-[9px] text-zinc-500">
+											玩家A 获胜！🎉
+										</span>
+									</div>
+								</div>
+								<div className="flex-none border-t border-zinc-100 bg-zinc-50 p-2">
+									<div className="relative">
+										<input
+											type="text"
+											placeholder="输入答案..."
+											className="h-7 w-full rounded border border-zinc-200 bg-white px-2 pr-8 text-xs focus:border-zinc-400 focus:outline-none"
+											disabled
+										/>
+										<button className="absolute top-1 right-1 p-0.5 text-zinc-400 disabled:opacity-30">
+											<Send className="h-4 w-4" />
+										</button>
+									</div>
+									<div className="mt-1 text-center text-[9px] text-zinc-400">
+										直接输入答案即可提交
+									</div>
+								</div>
+							</div>
+						</div>
+
+						{/* 统一的触发点 - 用于吸顶导航 */}
+						<div className="absolute right-0 bottom-0 left-0">
+							<div className="h-12"></div>
 						</div>
 					</div>
 				</div>
@@ -362,6 +584,11 @@ export function HomePage() {
 							icon="arrow-right"
 							title="无限画布"
 							desc="不再受限于屏幕大小。按住右键即可自由拖拽画布，空间随你的思维延伸。"
+						/>
+						<FeatureCard
+							icon="atom"
+							title="无限进步"
+							desc="探索未知，无限可能。"
 						/>
 					</div>
 				</div>
