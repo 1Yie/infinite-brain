@@ -107,6 +107,7 @@ export const router = createBrowserRouter([
 		path: '/product/function',
 		element: (
 			<AuthProvider>
+				<SetTitle title="Infinite Brain - 功能文档" />
 				<FunctionDocsPage />
 			</AuthProvider>
 		),
@@ -116,6 +117,7 @@ export const router = createBrowserRouter([
 		path: '/support/connect',
 		element: (
 			<AuthProvider>
+				<SetTitle title="Infinite Brain - 连接支持" />
 				<ConnectDocsPage />
 			</AuthProvider>
 		),
@@ -124,6 +126,7 @@ export const router = createBrowserRouter([
 		path: '/support/help',
 		element: (
 			<AuthProvider>
+				<SetTitle title="Infinite Brain - 帮助支持" />
 				<HelpDocsPage />
 			</AuthProvider>
 		),
@@ -133,6 +136,7 @@ export const router = createBrowserRouter([
 		path: '/login',
 		element: (
 			<AuthProvider>
+				<SetTitle title="Infinite Brain - 登录" />
 				<AnonymousOnly>
 					<Login />
 				</AnonymousOnly>
@@ -143,6 +147,7 @@ export const router = createBrowserRouter([
 		path: '/register',
 		element: (
 			<AuthProvider>
+				<SetTitle title="Infinite Brain - 注册" />
 				<AnonymousOnly>
 					<Register />
 				</AnonymousOnly>
