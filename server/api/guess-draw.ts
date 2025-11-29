@@ -89,16 +89,21 @@ async function createGameRoom(
 	ownerId: string,
 	ownerName: string,
 	totalRounds: number = 3,
-	roundTimeLimit: number = 60
+	roundTimeLimit: number = 60,
+	roomName?: string,
+	isPrivate: boolean = false,
+	password?: string
 ): Promise<GameState> {
 	try {
 		await db.insert(guessDrawRooms).values({
 			id: roomId,
-			name: roomId,
+			name: roomName || roomId, // 使用自定义房间名称，如果没有则使用roomId
 			ownerId,
 			ownerName,
 			totalRounds,
 			roundTimeLimit,
+			isPrivate,
+			password: isPrivate ? password : undefined,
 			status: 'waiting',
 			currentRound: 0,
 			currentPlayers: 1,
@@ -347,7 +352,6 @@ export const guessDrawRoutes = new Elysia({ prefix: '/guess-draw' })
 				(room): room is NonNullable<typeof room> => room !== null
 			);
 
-			console.log(`总共 ${validRooms.length} 个房间`);
 			validRooms.forEach((room) => {
 				console.log(`房间 ${room.id} 数据:`, room);
 			});
@@ -387,13 +391,19 @@ export const guessDrawRoutes = new Elysia({ prefix: '/guess-draw' })
 			const roomId = await generateRoomId();
 			const totalRounds = body.totalRounds || 3;
 			const roundTimeLimit = body.roundTimeLimit || 60;
+			const roomName = body.roomName;
+			const isPrivate = body.isPrivate || false;
+			const password = body.password;
 
 			const gameState = await createGameRoom(
 				roomId,
 				user.id.toString(),
 				user.name,
 				totalRounds,
-				roundTimeLimit
+				roundTimeLimit,
+				roomName,
+				isPrivate,
+				password
 			);
 
 			return {
@@ -408,37 +418,105 @@ export const guessDrawRoutes = new Elysia({ prefix: '/guess-draw' })
 			body: t.Object({
 				totalRounds: t.Optional(t.Number()),
 				roundTimeLimit: t.Optional(t.Number()),
+				roomName: t.Optional(t.String()),
+				isPrivate: t.Optional(t.Boolean()),
+				password: t.Optional(t.String()),
 			}),
 		}
 	)
 
 	// 加入游戏房间
-	.post('/:roomId/join', async ({ params, set, user }) => {
-		if (!user) {
-			set.status = 401;
-			return {
-				success: false,
-				message: '未授权访问',
-			};
-		}
+	.post(
+		'/:roomId/join',
+		async ({ params, body, set, user }) => {
+			if (!user) {
+				set.status = 401;
+				return {
+					success: false,
+					message: '未授权访问',
+				};
+			}
 
-		const { roomId } = params;
-		const gameState = await getGameState(roomId);
+			const { roomId } = params;
+			const password = body.password;
 
-		if (!gameState) {
-			set.status = 404;
-			return {
-				success: false,
-				message: '房间不存在',
-			};
-		}
+			// 检查房间是否存在以及是否需要密码
+			const room = await db
+				.select()
+				.from(guessDrawRooms)
+				.where(eq(guessDrawRooms.id, roomId))
+				.limit(1);
 
-		// 检查玩家是否已在房间中
-		const existingPlayer = gameState.players.find(
-			(p) => p.userId === user.id.toString()
-		);
+			if (room.length === 0) {
+				set.status = 404;
+				return {
+					success: false,
+					message: '房间不存在',
+				};
+			}
 
-		if (existingPlayer) {
+			const dbRoom = room[0]!;
+
+			// 检查密码
+			if (dbRoom.isPrivate) {
+				if (!password || password !== dbRoom.password) {
+					set.status = 403;
+					return {
+						success: false,
+						message: '密码错误',
+					};
+				}
+			}
+
+			const gameState = await getGameState(roomId);
+
+			if (!gameState) {
+				set.status = 404;
+				return {
+					success: false,
+					message: '房间不存在',
+				};
+			}
+
+			// 如果房间没人，第一个加入的玩家成为房主
+			if (gameState.players.length === 0) {
+				await db
+					.update(guessDrawRooms)
+					.set({
+						ownerId: user.id.toString(),
+						ownerName: user.name,
+					})
+					.where(eq(guessDrawRooms.id, roomId));
+				dbRoom.ownerId = user.id.toString();
+				dbRoom.ownerName = user.name;
+			}
+
+			// 检查玩家是否已在房间中
+			const existingPlayer = gameState.players.find(
+				(p) => p.userId === user.id.toString()
+			);
+
+			if (existingPlayer) {
+				return {
+					success: true,
+					message: '已成功加入房间',
+					data: {
+						roomId,
+						gameState,
+					},
+				};
+			}
+
+			// 添加新玩家
+			await addPlayerToRoom(roomId, user.id.toString(), user.name);
+			gameState.players.push({
+				userId: user.id.toString(),
+				username: user.name,
+				score: 0,
+				hasGuessed: false,
+				isDrawing: false,
+			});
+
 			return {
 				success: true,
 				message: '已成功加入房间',
@@ -447,27 +525,13 @@ export const guessDrawRoutes = new Elysia({ prefix: '/guess-draw' })
 					gameState,
 				},
 			};
+		},
+		{
+			body: t.Object({
+				password: t.Optional(t.String()),
+			}),
 		}
-
-		// 添加新玩家
-		await addPlayerToRoom(roomId, user.id.toString(), user.name);
-		gameState.players.push({
-			userId: user.id.toString(),
-			username: user.name,
-			score: 0,
-			hasGuessed: false,
-			isDrawing: false,
-		});
-
-		return {
-			success: true,
-			message: '已成功加入房间',
-			data: {
-				roomId,
-				gameState,
-			},
-		};
-	})
+	)
 
 	// 获取房间游戏状态
 	.get('/:roomId', async ({ params, set }) => {
@@ -509,6 +573,21 @@ export const guessDrawRoutes = new Elysia({ prefix: '/guess-draw' })
 			return {
 				success: false,
 				message: '房间不存在',
+			};
+		}
+
+		// 获取房间信息以检查房主
+		const room = await db
+			.select()
+			.from(guessDrawRooms)
+			.where(eq(guessDrawRooms.id, roomId))
+			.limit(1);
+
+		if (room.length === 0 || room[0]!.ownerId !== user.id.toString()) {
+			set.status = 403;
+			return {
+				success: false,
+				message: '只有房主才能开始游戏',
 			};
 		}
 

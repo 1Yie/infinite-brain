@@ -2,10 +2,9 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import { guessDrawApi } from '@/api/guess-draw';
-import { SetTitle } from '@/utils/set-title';
 import {
 	ArrowLeft,
 	Plus,
@@ -21,8 +20,11 @@ export function CreateGuessDrawRoom() {
 	const navigate = useNavigate();
 
 	// 表单状态
+	const [roomName, setRoomName] = useState('');
 	const [totalRounds, setTotalRounds] = useState(3); // 默认3回合
 	const [roundTimeLimit, setRoundTimeLimit] = useState(60); // 默认60秒
+	const [isPrivate, setIsPrivate] = useState(false);
+	const [password, setPassword] = useState('');
 	const [isCreating, setIsCreating] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
@@ -32,16 +34,26 @@ export function CreateGuessDrawRoom() {
 
 	// 创建房间
 	const handleCreateRoom = async () => {
+		if (!roomName) {
+			setError('请输入房间名称');
+			return;
+		}
+
+		if (isPrivate && !password) {
+			setError('私密房间必须设置密码');
+			return;
+		}
+
 		setIsCreating(true);
 		setError(null);
 
 		try {
 			const response = await guessDrawApi.createRoom({
 				totalRounds,
-				roundTimeLimit: roundTimeLimit, // 后端单位如果是秒，这里直接传；如果是毫秒请 * 1000
-				// 注意：根据之前的 API 代码，后端似乎直接用了这个数值，建议确认单位。
-				// 假设后端要的是秒，或者后端会自动处理。
-				// 如果后端明确要毫秒： roundTimeLimit: roundTimeLimit * 1000
+				roomName,
+				roundTimeLimit: roundTimeLimit,
+				isPrivate,
+				password: isPrivate ? password : undefined,
 			});
 
 			if (response.success && response.data) {
@@ -59,8 +71,6 @@ export function CreateGuessDrawRoom() {
 
 	return (
 		<div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 p-4">
-			<SetTitle title="创建房间 - 你猜我画" />
-
 			<div className="animate-in fade-in zoom-in-95 w-full max-w-lg duration-300">
 				{/* 头部标题 */}
 				<div className="mb-6 text-center">
@@ -85,6 +95,25 @@ export function CreateGuessDrawRoom() {
 					<div className="space-y-8 p-6 md:p-8">
 						{/* 回合数设置 */}
 						<div className="space-y-3">
+							<div className="flex items-center justify-between">
+								<Label
+									htmlFor="roomName"
+									className="flex items-center gap-2 text-base font-semibold text-gray-800"
+								>
+									<Plus className="h-4 w-4 text-gray-500" />
+									房间名称
+								</Label>
+							</div>
+							<div className="relative mt-2">
+								<Input
+									id="roomName"
+									type="text"
+									value={roomName}
+									onChange={(e) => setRoomName(e.target.value)}
+									placeholder="输入房间名称"
+									className="w-full"
+								/>
+							</div>
 							<div className="flex items-center justify-between">
 								<Label
 									htmlFor="totalRounds"
@@ -125,7 +154,7 @@ export function CreateGuessDrawRoom() {
 									onChange={(e) => setTotalRounds(Number(e.target.value))}
 									className="pr-12"
 								/>
-								<span className="pointer-events-none absolute top-2.5 right-3 text-sm text-gray-400">
+								<span className="pointer-events-none absolute top-1.5 right-3 text-sm text-gray-400">
 									自定义
 								</span>
 							</div>
@@ -176,10 +205,43 @@ export function CreateGuessDrawRoom() {
 									onChange={(e) => setRoundTimeLimit(Number(e.target.value))}
 									className="pr-12"
 								/>
-								<span className="pointer-events-none absolute top-2.5 right-3 text-sm text-gray-400">
+								<span className="pointer-events-none absolute top-1.5 right-3 text-sm text-gray-400">
 									自定义
 								</span>
 							</div>
+						</div>
+
+						{/* 私密房间设置 */}
+						<div className="space-y-3">
+							<div className="flex items-center space-x-2">
+								<Checkbox
+									id="isPrivate"
+									checked={isPrivate}
+									onCheckedChange={(checked) => setIsPrivate(!!checked)}
+								/>
+								<Label
+									htmlFor="isPrivate"
+									className="flex items-center gap-2 text-base font-semibold text-gray-800"
+								>
+									私密房间
+								</Label>
+							</div>
+
+							{isPrivate && (
+								<div className="space-y-2">
+									<Label htmlFor="password" className="text-sm text-gray-600">
+										房间密码
+									</Label>
+									<Input
+										id="password"
+										type="password"
+										placeholder="输入房间密码"
+										value={password}
+										onChange={(e) => setPassword(e.target.value)}
+										required
+									/>
+								</div>
+							)}
 						</div>
 					</div>
 

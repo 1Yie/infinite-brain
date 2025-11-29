@@ -187,3 +187,62 @@ export const guessDrawUsedWordsRelations = relations(
 		}),
 	})
 );
+
+// 颜色对抗游戏房间表
+export const colorClashRooms = sqliteTable('color_clash_rooms', {
+	id: text('id').primaryKey(),
+	name: text('name').notNull(),
+	ownerId: text('owner_id').notNull(),
+	ownerName: text('owner_name').notNull(),
+	maxPlayers: integer('max_players').notNull().default(8),
+	gameTime: integer('game_time').notNull().default(300), // 游戏时长（秒）
+	canvasWidth: integer('canvas_width').notNull().default(800),
+	canvasHeight: integer('canvas_height').notNull().default(600),
+	isPrivate: integer('is_private', { mode: 'boolean' }).default(false),
+	password: text('password'),
+	status: text('status', { enum: ['waiting', 'playing', 'finished'] })
+		.notNull()
+		.default('waiting'),
+	gameStartTime: integer('game_start_time', { mode: 'timestamp' }),
+	gameEndTime: integer('game_end_time', { mode: 'timestamp' }),
+	winnerId: text('winner_id'),
+	createdAt: integer('created_at', { mode: 'timestamp' }).default(
+		sql`CURRENT_TIMESTAMP`
+	),
+});
+
+// 颜色对抗游戏玩家表
+export const colorClashPlayers = sqliteTable('color_clash_players', {
+	id: integer('id').primaryKey({ autoIncrement: true }),
+	roomId: text('room_id').notNull(),
+	userId: text('user_id').notNull(),
+	username: text('username').notNull(),
+	color: text('color').notNull(), // RGB颜色字符串，如 "rgb(255,0,0)"
+	score: integer('score').notNull().default(0), // 占领的像素数量
+	isConnected: integer('is_connected', { mode: 'boolean' }).default(true),
+	lastActivity: integer('last_activity', { mode: 'timestamp' }).$defaultFn(
+		() => new Date()
+	),
+	createdAt: integer('created_at', { mode: 'timestamp' }).default(
+		sql`CURRENT_TIMESTAMP`
+	),
+});
+
+// 颜色对抗游戏房间关系
+export const colorClashRoomsRelations = relations(
+	colorClashRooms,
+	({ many }) => ({
+		players: many(colorClashPlayers),
+	})
+);
+
+// 颜色对抗游戏玩家关系
+export const colorClashPlayersRelations = relations(
+	colorClashPlayers,
+	({ one }) => ({
+		room: one(colorClashRooms, {
+			fields: [colorClashPlayers.roomId],
+			references: [colorClashRooms.id],
+		}),
+	})
+);

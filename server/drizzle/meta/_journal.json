@@ -15,6 +15,13 @@
 			"when": 1764135414588,
 			"tag": "0001_purple_ink",
 			"breakpoints": true
+		},
+		{
+			"idx": 2,
+			"version": "6",
+			"when": 1764325690301,
+			"tag": "0002_equal_reavers",
+			"breakpoints": true
 		}
 	]
 }

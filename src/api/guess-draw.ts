@@ -52,6 +52,7 @@ export interface CreateRoomRequest {
 	roundTimeLimit?: number;
 	roomName?: string;
 	isPrivate?: boolean;
+	password?: string;
 }
 
 // 猜测响应类型
@@ -147,9 +148,10 @@ export const guessDrawApi = {
 	/**
 	 * 加入游戏房间
 	 * @param roomId 房间ID
+	 * @param password 房间密码（可选）
 	 */
-	joinRoom: (roomId: string) => {
-		return client.api['guess-draw']({ roomId }).join.post();
+	joinRoom: (roomId: string, password?: string) => {
+		return client.api['guess-draw']({ roomId }).join.post({ password });
 	},
 
 	/**

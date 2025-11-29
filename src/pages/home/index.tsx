@@ -18,6 +18,8 @@ import {
 	CircleUser,
 	MessageSquare,
 	Send,
+	Gamepad2,
+	Users,
 } from 'lucide-react';
 
 function FeatureCard({
@@ -58,7 +60,8 @@ export function HomePage() {
 	// UI 状态
 	const [isSticky, setIsSticky] = useState(false);
 	const [isLogged, setIsLogged] = useState<boolean | null>(null);
-	const [currentSlide, setCurrentSlide] = useState(0); // 0: 白板演示, 1: 你猜我画
+	const [currentSlide, setCurrentSlide] = useState(0); // 0: 白板演示, 1: 你猜我画, 2: 颜色对抗
+	const [currentAnnouncement, setCurrentAnnouncement] = useState(0); // 滚动公告索引
 
 	// WebSocket - 允许未登录用户也能连接，使用游客身份
 	const {
@@ -165,6 +168,15 @@ export function HomePage() {
 			});
 	}, []);
 
+	// 公告滚动定时器
+	useEffect(() => {
+		const interval = setInterval(() => {
+			setCurrentAnnouncement((prev) => (prev + 1) % 2); // 在2个公告之间切换
+		}, 4000); // 每4秒切换一次
+
+		return () => clearInterval(interval);
+	}, []);
+
 	// 首页白板：在页面隐藏/卸载时保存当前视图状态（仅localStorage，演示用途）
 	useEffect(() => {
 		const key = `whiteboard-view-state-${roomId}`;
@@ -261,10 +273,18 @@ export function HomePage() {
 							<span className="relative inline-flex h-2 w-2 rounded-full bg-green-500"></span>
 						</span>
 						<span
-							className="cursor-pointer"
-							onClick={() => navigate('/room/guess-draw')}
+							className="cursor-pointer transition-all duration-500"
+							onClick={() => {
+								if (currentAnnouncement === 0) {
+									navigate('/room/guess-draw');
+								} else {
+									navigate('/room/color-clash');
+								}
+							}}
 						>
-							《你猜我画》现已上线！立刻体验 →
+							{currentAnnouncement === 0
+								? '《你猜我画》现已上线！立刻体验 →'
+								: '全新上线《颜色对抗》！立刻尝试 →'}
 						</span>
 					</div>
 					<h1 className="mb-4 text-2xl font-extrabold tracking-tight text-zinc-600 sm:text-4xl">
@@ -304,6 +324,19 @@ export function HomePage() {
 						你猜我画
 						{currentSlide !== 1 && (
 							<span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-red-500"></span>
+						)}
+					</button>
+					<button
+						onClick={() => setCurrentSlide(2)}
+						className={`relative flex-1 rounded-md px-4 py-2 text-sm font-medium transition-all ${
+							currentSlide === 2
+								? 'bg-zinc-900 text-white shadow-sm'
+								: 'text-zinc-600 hover:text-zinc-900'
+						}`}
+					>
+						颜色对抗
+						{currentSlide !== 2 && (
+							<span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-blue-500"></span>
 						)}
 					</button>
 				</div>
@@ -541,6 +574,88 @@ export function HomePage() {
 							<div className="h-12"></div>
 						</div>
 					</div>
+
+					{/* 颜色对抗演示 */}
+					<div
+						className={`relative h-[500px] overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-50 shadow-sm ${currentSlide === 2 ? 'block' : 'hidden'}`}
+					>
+						{/* 颜色对抗布局 - 画布占满，右上角玩家列表 */}
+						<div className="relative h-full w-full overflow-hidden rounded-2xl bg-white">
+							{/* 网格背景 */}
+							<div
+								className="absolute inset-0 opacity-[0.3]"
+								style={{
+									backgroundImage:
+										'repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(0,0,0,0.05) 10px, rgba(0,0,0,0.05) 20px)',
+								}}
+							/>
+
+							{/* 画布内容区域 */}
+							<div className="absolute inset-0 flex items-center justify-center">
+								<div className="text-center">
+									<Gamepad2 className="mx-auto mb-3 h-10 w-10 text-zinc-300" />
+									<h3 className="text-sm font-semibold text-zinc-900">
+										等待游戏开始
+									</h3>
+
+									<p className="mt-2 text-xs text-zinc-400">
+										用键盘 WASD 或方向键移动，占领领土！
+									</p>
+								</div>
+							</div>
+
+							{/* 模拟玩家位置指示器 */}
+							<div className="absolute top-8 left-8 h-3 w-3 rounded-full bg-red-500 shadow-lg"></div>
+							<div className="absolute top-12 right-12 h-3 w-3 rounded-full bg-green-500 shadow-lg"></div>
+							<div className="absolute bottom-8 left-12 h-3 w-3 rounded-full bg-blue-500 shadow-lg"></div>
+							<div className="absolute right-8 bottom-12 h-3 w-3 rounded-full bg-yellow-500 shadow-lg"></div>
+
+							{/* 右上角玩家列表 */}
+							<div className="absolute top-4 right-4 z-10">
+								<div className="w-48 rounded-lg border border-gray-200 bg-white/95 shadow-lg backdrop-blur-sm">
+									<div className="rounded-t-lg border-b border-gray-100 bg-gray-50/50 px-3 py-2">
+										<h3 className="flex items-center gap-2 text-xs font-semibold text-gray-700">
+											<Users className="h-4 w-4" />
+											玩家列表
+										</h3>
+									</div>
+									<div className="max-h-48 overflow-y-auto p-2">
+										<div className="space-y-1">
+											{[
+												{ name: '玩家A', color: '#ff0000', score: 1250 },
+												{ name: '玩家B', color: '#00ff00', score: 980 },
+												{ name: '玩家C', color: '#0000ff', score: 750 },
+												{ name: '玩家D', color: '#ffff00', score: 620 },
+											].map((player, idx) => (
+												<div
+													key={idx}
+													className="flex items-center justify-between rounded bg-gray-50 p-2 text-xs transition-colors hover:bg-gray-100"
+												>
+													<div className="flex min-w-0 items-center gap-2">
+														<div
+															className="h-3 w-3 shrink-0 rounded-full border border-gray-300"
+															style={{ backgroundColor: player.color }}
+														/>
+														<span className="truncate text-xs font-medium text-gray-700">
+															{player.name}
+														</span>
+													</div>
+													<span className="ml-2 shrink-0 font-mono text-xs font-bold text-gray-600">
+														{player.score}
+													</span>
+												</div>
+											))}
+										</div>
+									</div>
+								</div>
+							</div>
+						</div>
+
+						{/* 统一的触发点 - 用于吸顶导航 */}
+						<div className="absolute right-0 bottom-0 left-0">
+							<div className="h-12"></div>
+						</div>
+					</div>
 				</div>
 			</section>
 
@@ -703,6 +818,7 @@ export function HomePage() {
 						</p>
 					</div>
 				</div>
+				ni
 			</footer>
 		</div>
 	);

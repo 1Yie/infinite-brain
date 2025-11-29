@@ -8,16 +8,20 @@ import { Register } from '../pages/auth/register';
 import { RoomPage } from '../pages/room';
 import { HomePage } from '../pages/home';
 import { SetTitle } from '@/utils/set-title';
-import { GuessDrawLobby } from '../pages/play/guess-draw';
+import { GuessDrawRoom } from '../pages/play/guess-draw';
 import { CreateGuessDrawRoom } from '../pages/play/guess-draw/create-room';
 import { GuessDrawPage } from '../pages/play/guess-draw/guess-draw';
 import { NotFoundPage } from '../pages/not-found';
 import { RoomGuard } from '../components/router/room-guard';
 import { WhiteboardPage } from '../pages/board-room';
+import { CreateWhiteboardRoom } from '../pages/board-room/create-room';
 import { SettingsPage } from '@/pages/settings';
 import { FunctionDocsPage } from '@/pages/docs/function';
 import { ConnectDocsPage } from '@/pages/docs/support/connect';
 import { HelpDocsPage } from '@/pages/docs/support/help';
+import { ColorClashRoom } from '@/pages/play/color-clash';
+import { CreateColorClashRoom } from '@/pages/play/color-clash/create-room';
+import { ColorClash } from '@/pages/play/color-clash/color-clash';
 
 export const router = createBrowserRouter([
 	{
@@ -62,7 +66,17 @@ export const router = createBrowserRouter([
 				path: 'room/whiteboard',
 				element: (
 					<>
+						<SetTitle title="白板 - 房间列表" />
 						<WhiteboardPage />
+					</>
+				),
+			},
+			{
+				path: 'room/whiteboard/create',
+				element: (
+					<>
+						<SetTitle title="白板 - 创建房间" />
+						<CreateWhiteboardRoom />
 					</>
 				),
 			},
@@ -79,7 +93,7 @@ export const router = createBrowserRouter([
 				element: (
 					<>
 						<SetTitle title="你猜我画 - 房间列表" />
-						<GuessDrawLobby />
+						<GuessDrawRoom />
 					</>
 				),
 			},
@@ -87,7 +101,7 @@ export const router = createBrowserRouter([
 				path: 'room/guess-draw/create',
 				element: (
 					<>
-						<SetTitle title="创建你猜我画房间" />
+						<SetTitle title="你猜我画 - 创建房间" />
 						<CreateGuessDrawRoom />
 					</>
 				),
@@ -98,6 +112,33 @@ export const router = createBrowserRouter([
 					<RoomGuard>
 						<GuessDrawPage />
 					</RoomGuard>
+				),
+			},
+			{
+				path: 'room/color-clash',
+				element: (
+					<>
+						<SetTitle title="颜色对抗 - 房间列表" />
+						<ColorClashRoom />
+					</>
+				),
+			},
+			{
+				path: 'room/color-clash/create',
+				element: (
+					<>
+						<SetTitle title="创建颜色对抗房间" />
+						<CreateColorClashRoom />
+					</>
+				),
+			},
+			{
+				path: 'room/color-clash/:roomId',
+				element: (
+					<>
+						<SetTitle title="颜色对抗" />
+						<ColorClash />
+					</>
 				),
 			},
 		],

@@ -1,4 +1,5 @@
 import { boardRoute } from './board';
 import { gameRoute } from './guess-draw';
+import { colorClashWsRoute } from './color-clash';
 
-export { boardRoute, gameRoute };
+export { boardRoute, gameRoute, colorClashWsRoute };

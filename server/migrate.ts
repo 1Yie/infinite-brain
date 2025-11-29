@@ -170,6 +170,43 @@ async function migrate() {
 			);
 		}
 
+		// 创建颜色对抗游戏房间表
+		await db.run(`
+      CREATE TABLE IF NOT EXISTS color_clash_rooms (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        owner_id TEXT NOT NULL,
+        owner_name TEXT NOT NULL,
+        max_players INTEGER NOT NULL DEFAULT 8,
+        game_time INTEGER NOT NULL DEFAULT 300,
+        canvas_width INTEGER NOT NULL DEFAULT 800,
+        canvas_height INTEGER NOT NULL DEFAULT 600,
+        is_private INTEGER DEFAULT 0,
+        password TEXT,
+        status TEXT NOT NULL DEFAULT 'waiting' CHECK(status IN ('waiting', 'playing', 'finished')),
+        game_start_time DATETIME,
+        game_end_time DATETIME,
+        winner_id TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+		// 创建颜色对抗游戏玩家表
+		await db.run(`
+      CREATE TABLE IF NOT EXISTS color_clash_players (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        room_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        username TEXT NOT NULL,
+        color TEXT NOT NULL,
+        score INTEGER NOT NULL DEFAULT 0,
+        is_connected INTEGER DEFAULT 1,
+        last_activity DATETIME DEFAULT CURRENT_TIMESTAMP,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (room_id) REFERENCES color_clash_rooms(id) ON DELETE CASCADE
+      )
+    `);
+
 		console.log('✅ 数据库迁移完成');
 	} catch (error) {
 		console.error('❌ 数据库迁移失败:', error);

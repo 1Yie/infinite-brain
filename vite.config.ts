@@ -19,6 +19,11 @@ export default defineConfig(({ mode }) => ({
 			'@': path.resolve(__dirname, './src'),
 		},
 	},
+	server: {
+		watch: {
+			ignored: ['**/server/**', '**/*.json', '**/*.log'],
+		},
+	},
 
 	build: {
 		minify: 'esbuild',

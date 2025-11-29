@@ -13,8 +13,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Checkbox } from '@/components/ui/checkbox';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Plus, RefreshCw } from 'lucide-react';
 import { BoardStats } from './board-stats';
 
 export function WhiteboardPage() {
@@ -24,12 +23,6 @@ export function WhiteboardPage() {
 	// 房间状态
 	const [rooms, setRooms] = useState<Room[]>([]);
 	const [loading, setLoading] = useState(true);
-
-	// 创建房间状态
-	const [newRoomName, setNewRoomName] = useState('');
-	const [isPrivateRoom, setIsPrivateRoom] = useState(false);
-	const [roomPassword, setRoomPassword] = useState('');
-	const [isCreating, setIsCreating] = useState(false);
 
 	// UI 状态
 	const [alertMessage, setAlertMessage] = useState('');
@@ -71,40 +64,6 @@ export function WhiteboardPage() {
 	useEffect(() => {
 		fetchRooms();
 	}, [fetchRooms]);
-
-	// 创建房间处理
-	const handleCreateRoom = async (e: React.FormEvent) => {
-		e.preventDefault();
-		if (!newRoomName.trim()) return;
-
-		if (isPrivateRoom && !roomPassword.trim()) {
-			setAlertMessage('请输入房间密码');
-			setIsAlertOpen(true);
-			return;
-		}
-
-		try {
-			setIsCreating(true);
-			const { roomId } = await roomApi.createRoom(
-				newRoomName,
-				isPrivateRoom,
-				isPrivateRoom ? roomPassword : undefined
-			);
-			await fetchRooms();
-			setNewRoomName('');
-			setIsPrivateRoom(false);
-			setRoomPassword('');
-
-			// 如果是创建者，设置房间授权状态，避免跳转后还要输入密码
-			if (isPrivateRoom) {
-				sessionStorage.setItem(`room_auth_${roomId}`, 'true');
-			}
-
-			navigate(`/room/whiteboard/${roomId}`);
-		} finally {
-			setIsCreating(false);
-		}
-	};
 
 	// 进入房间处理
 	const handleEnterRoom = (roomId: string) => {
@@ -215,6 +174,29 @@ export function WhiteboardPage() {
 							</h1>
 						</div>
 					</div>
+					<div className="flex items-center gap-3">
+						<Button
+							variant="ghost"
+							size="sm"
+							onClick={fetchRooms}
+							disabled={loading}
+							className="text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
+						>
+							<RefreshCw
+								className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`}
+							/>
+							刷新
+						</Button>
+						<Button
+							variant="default"
+							size="sm"
+							onClick={() => navigate('/room/whiteboard/create')}
+							className="bg-black text-white hover:bg-gray-800 dark:bg-white dark:text-black dark:hover:bg-gray-200"
+						>
+							<Plus className="mr-1 h-4 w-4" />
+							创建房间
+						</Button>
+					</div>
 				</div>
 			</header>
 
@@ -223,78 +205,6 @@ export function WhiteboardPage() {
 					<div className="mx-auto max-w-6xl p-8">
 						{/* 用户统计 */}
 						<BoardStats user={user} rooms={rooms} userStats={userStats} />
-
-						{/* 页面标题 */}
-						<header className="mb-8">
-							<h2 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100">
-								房间大厅
-							</h2>
-							<p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-								创建或加入房间，开始协作
-							</p>
-						</header>
-
-						{/* 创建房间 */}
-						<div className="mb-8 rounded-xl border border-zinc-200 bg-white p-6 dark:border-zinc-700 dark:bg-zinc-800">
-							<h3 className="mb-4 text-lg font-semibold text-zinc-900 dark:text-zinc-100">
-								新建房间
-							</h3>
-							<div className="space-y-4">
-								<Input
-									type="text"
-									placeholder="输入房间名称..."
-									value={newRoomName}
-									onChange={(e) => setNewRoomName(e.target.value)}
-									disabled={isCreating}
-									onKeyDown={(e) => {
-										if (e.key === 'Enter' && !isPrivateRoom) {
-											handleCreateRoom(e);
-										}
-									}}
-								/>
-								<div className="flex items-center space-x-2">
-									<Checkbox
-										id="private-room"
-										checked={isPrivateRoom}
-										onCheckedChange={(checked) =>
-											setIsPrivateRoom(checked as boolean)
-										}
-									/>
-									<label
-										htmlFor="private-room"
-										className="text-sm leading-none font-medium peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-									>
-										私密房间
-									</label>
-								</div>
-								{isPrivateRoom && (
-									<Input
-										type="password"
-										placeholder="输入房间密码..."
-										value={roomPassword}
-										onChange={(e) => setRoomPassword(e.target.value)}
-										disabled={isCreating}
-										onKeyDown={(e) => {
-											if (e.key === 'Enter') {
-												handleCreateRoom(e);
-											}
-										}}
-									/>
-								)}
-								<Button
-									type="button"
-									onClick={handleCreateRoom}
-									disabled={
-										isCreating ||
-										!newRoomName.trim() ||
-										(isPrivateRoom && !roomPassword.trim())
-									}
-									className="w-full"
-								>
-									{isCreating ? '创建中...' : '创建房间'}
-								</Button>
-							</div>
-						</div>
 
 						{/* 房间列表 */}
 						<div>
@@ -336,24 +246,26 @@ export function WhiteboardPage() {
 									</p>
 								</div>
 							) : (
-								<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+								<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
 									{rooms.map((room) => (
 										<div
 											key={room.id}
 											onClick={() => handleEnterRoom(room.id)}
-											className={`group cursor-pointer rounded-xl border bg-white p-5 transition-all hover:border-zinc-400 hover:shadow-md dark:bg-zinc-800 ${
-												room.id === 'default-room'
-													? 'border-zinc-300 bg-zinc-50/50 dark:border-zinc-600 dark:bg-zinc-700/50'
-													: 'border-zinc-200 dark:border-zinc-700'
-											}`}
+											className="group flex flex-col rounded-xl border border-gray-200 bg-white p-4 transition-colors hover:border-gray-400 hover:shadow-sm dark:border-zinc-700 dark:bg-zinc-800"
 										>
-											<div className="mb-3 flex items-start justify-between">
-												<div className="min-w-0 flex-1">
-													<h4 className="flex items-center gap-2 truncate text-base font-semibold text-zinc-900 transition-colors group-hover:text-zinc-700 dark:text-zinc-100 dark:group-hover:text-zinc-300">
-														{room.name}
+											{/* 头部：名称与状态 */}
+											<div className="mb-4 flex items-start justify-between">
+												<div className="min-w-0 pr-2">
+													<div className="mb-1 flex items-center gap-1.5">
+														<h3
+															className="truncate font-bold text-gray-900 dark:text-zinc-100"
+															title={room.name}
+														>
+															{room.name}
+														</h3>
 														{room.isPrivate && (
 															<svg
-																className="h-4 w-4 shrink-0 text-zinc-500 dark:text-zinc-400"
+																className="h-3 w-3 text-amber-500"
 																fill="none"
 																stroke="currentColor"
 																viewBox="0 0 24 24"
@@ -368,58 +280,90 @@ export function WhiteboardPage() {
 														)}
 														{room.id === 'default-room' && (
 															<span className="inline-flex items-center rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-600 dark:bg-zinc-700 dark:text-zinc-300">
-																默认
+																官方
 															</span>
 														)}
-													</h4>
-													<p className="mt-1.5 flex items-center text-xs text-zinc-500 dark:text-zinc-400">
-														{room.id === 'default-room' ? (
-															renderRoomCreatedAt(room)
-														) : (
-															<>
-																<span className="flex items-center gap-1.5">
-																	<svg
-																		className="h-3.5 w-3.5"
-																		fill="none"
-																		stroke="currentColor"
-																		viewBox="0 0 24 24"
-																	>
-																		<path
-																			strokeLinecap="round"
-																			strokeLinejoin="round"
-																			strokeWidth={2}
-																			d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
-																		/>
-																	</svg>
-																	{renderRoomCreatedAt(room)}
-																</span>
-																{room.creatorName && (
-																	<>
-																		<span className="mx-1.5 text-base text-zinc-500 dark:text-zinc-400">
-																			·
-																		</span>
-																		<span className="flex items-center gap-1.5">
-																			<svg
-																				className="h-3.5 w-3.5"
-																				fill="none"
-																				stroke="currentColor"
-																				viewBox="0 0 24 24"
-																			>
-																				<path
-																					strokeLinecap="round"
-																					strokeLinejoin="round"
-																					strokeWidth={2}
-																					d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
-																				/>
-																			</svg>
-																			{room.creatorName}
-																		</span>
-																	</>
-																)}
-															</>
-														)}
-													</p>
+													</div>
+													{room.id !== 'default-room' ? (
+														<div className="flex items-center gap-1 font-mono text-xs text-gray-400 dark:text-zinc-400">
+															<svg
+																className="h-3 w-3"
+																fill="none"
+																stroke="currentColor"
+																viewBox="0 0 24 24"
+															>
+																<path
+																	strokeLinecap="round"
+																	strokeLinejoin="round"
+																	strokeWidth={2}
+																	d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+																/>
+															</svg>
+															{renderRoomCreatedAt(room)}
+														</div>
+													) : (
+														<div className="flex items-center gap-1 text-xs text-gray-400 dark:text-zinc-400">
+															INFINITE BRAIN
+														</div>
+													)}
 												</div>
+											</div>
+
+											{/* 底部：房主与按钮 */}
+											<div className="mt-auto flex items-center justify-between pt-1">
+												<div className="flex items-center gap-2 overflow-hidden">
+													{room.id === 'default-room' ? (
+														<div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-100 dark:bg-zinc-700">
+															<svg
+																className="h-3.5 w-3.5 text-gray-500 dark:text-zinc-400"
+																fill="none"
+																stroke="currentColor"
+																viewBox="0 0 24 24"
+															>
+																<path
+																	strokeLinecap="round"
+																	strokeLinejoin="round"
+																	strokeWidth={2}
+																	d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
+																/>
+															</svg>
+														</div>
+													) : (
+														<div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-100 dark:bg-zinc-700">
+															<svg
+																className="h-3.5 w-3.5 text-gray-500 dark:text-zinc-400"
+																fill="none"
+																stroke="currentColor"
+																viewBox="0 0 24 24"
+															>
+																<path
+																	strokeLinecap="round"
+																	strokeLinejoin="round"
+																	strokeWidth={2}
+																	d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+																/>
+															</svg>
+														</div>
+													)}
+													{room.id === 'default-room' ? (
+														<span
+															className="truncate text-xs font-medium text-gray-600 dark:text-zinc-400"
+															title="系统默认房间"
+														></span>
+													) : room.creatorName ? (
+														<span
+															className="truncate text-xs font-medium text-gray-600 dark:text-zinc-400"
+															title={room.creatorName}
+														>
+															{room.creatorName}
+														</span>
+													) : (
+														<span className="truncate text-xs font-medium text-gray-600 dark:text-zinc-400">
+															未知创建者
+														</span>
+													)}
+												</div>
+
 												{room.id !== 'default-room' &&
 													room.ownerId === user?.id?.toString() && (
 														<button
@@ -498,7 +442,11 @@ export function WhiteboardPage() {
 					<AlertDialogPopup>
 						<AlertDialogHeader>
 							<AlertDialogTitle>加入私密房间</AlertDialogTitle>
-							<AlertDialogDescription>请输入房间密码</AlertDialogDescription>
+							<AlertDialogDescription>
+								#{joinRoomId}
+								<br />
+								该房间需要密码才能加入。
+							</AlertDialogDescription>
 						</AlertDialogHeader>
 						<div className="px-6 py-4">
 							<Input

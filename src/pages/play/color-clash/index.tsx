@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input'; // 新增 Input 组件
-// 移除 Card 相关引用
+import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Alert } from '@/components/ui/alert';
 import {
@@ -13,9 +12,9 @@ import {
 	AlertDialogDescription,
 	AlertDialogFooter,
 } from '@/components/ui/alert-dialog';
-
-import { guessDrawApi } from '@/api/guess-draw';
+import { colorClashApi } from '@/api/color-clash';
 import { SetTitle } from '@/utils/set-title';
+import type { ColorClashRoom } from '@/api/color-clash';
 import {
 	ArrowLeft,
 	Plus,
@@ -26,64 +25,55 @@ import {
 	Gamepad2,
 	Lock,
 	ArrowRight,
-	Trophy,
 	RefreshCw,
+	User,
 	Hash,
 	LogIn,
 } from 'lucide-react';
 
-// 使用API中定义的GuessDrawRoom类型
-interface GuessDrawRoom {
-	id: string;
-	name: string;
-	ownerId: string;
-	ownerName: string;
-	maxPlayers: number;
-	currentPlayers: number;
-	rounds: number;
-	roundTime: number;
-	isPrivate: boolean;
-	status: 'waiting' | 'playing' | 'finished';
-	createdAt: string;
-}
-
-export function GuessDrawRoom() {
+export function ColorClashRoom() {
 	const navigate = useNavigate();
-
-	// 房间列表状态
-	const [rooms, setRooms] = useState<GuessDrawRoom[]>([]);
+	const [rooms, setRooms] = useState<ColorClashRoom[]>([]);
 	const [isLoading, setIsLoading] = useState(true);
-
-	// 搜索/加入状态 (来自 JoinGuessDrawRoom)
-	const [searchId, setSearchId] = useState('');
 	const [isJoining, setIsJoining] = useState(false);
-
-	// 统一错误状态
+	const [searchId, setSearchId] = useState('');
 	const [error, setError] = useState<string | null>(null);
-
-	// 密码弹窗状态
-	const [selectedRoom, setSelectedRoom] = useState<GuessDrawRoom | null>(null);
+	const [selectedRoom, setSelectedRoom] = useState<ColorClashRoom | null>(null);
 	const [isPasswordDialogOpen, setIsPasswordDialogOpen] = useState(false);
 	const [password, setPassword] = useState('');
 
-	// 获取房间列表
-	const fetchRooms = async () => {
-		setIsLoading(true);
+	useEffect(() => {
+		loadRooms();
+	}, []);
+
+	const loadRooms = async (showLoading = true) => {
+		if (showLoading) {
+			setIsLoading(true);
+		}
 		setError(null);
 		try {
-			const response = await guessDrawApi.getRooms();
-			console.log('房间列表数据:', response.data?.rooms);
-			setRooms(response.data?.rooms || []);
-		} catch (err) {
+			const response = await colorClashApi.getRooms();
+			if (response.success && response.data) {
+				// 转换 createdAt 为 Date
+				const roomsWithDate = response.data.map((room) => ({
+					...room,
+					createdAt: room.createdAt ? new Date(room.createdAt) : null,
+				}));
+				setRooms(roomsWithDate);
+			} else {
+				setError('获取房间列表失败');
+			}
+		} catch (error) {
+			console.error('获取房间列表失败:', error);
 			setError('获取房间列表失败');
-			console.error(err);
 		} finally {
-			setIsLoading(false);
+			if (showLoading) {
+				setIsLoading(false);
+			}
 		}
 	};
 
-	// 列表点击加入
-	const handleListJoin = async (room: GuessDrawRoom) => {
+	const handleJoinRoom = async (room: ColorClashRoom) => {
 		if (room.isPrivate) {
 			setSelectedRoom(room);
 			setIsPasswordDialogOpen(true);
@@ -92,24 +82,17 @@ export function GuessDrawRoom() {
 
 		setIsJoining(true);
 		setError(null);
-
 		try {
-			const response = await guessDrawApi.joinRoom(room.id);
+			const response = await colorClashApi.joinRoom(room.id);
 
-			if (response.data && response.data.success && response.data.data) {
-				navigate(`/room/guess-draw/${response.data.data.roomId}`);
-			} else if (response.error) {
-				console.log('Join Error:', response.error.value);
-
-				const errData = response.error.value as { message?: string };
-
-				setError(errData.message || '加入房间失败');
+			if (response.success) {
+				navigate(`/room/color-clash/${room.id}`);
 			} else {
-				setError('加入房间失败');
+				setError(response.error?.message || '加入房间失败');
 			}
-		} catch (err) {
-			setError('网络请求失败，请检查连接');
-			console.error('System Error:', err);
+		} catch (error) {
+			console.error('加入房间失败:', error);
+			setError('加入房间失败');
 		} finally {
 			setIsJoining(false);
 		}
@@ -123,15 +106,11 @@ export function GuessDrawRoom() {
 		setError(null);
 
 		try {
-			const response = await guessDrawApi.joinRoom(searchId.trim());
-			if (response.data && response.data.success && response.data.data) {
-				navigate(`/room/guess-draw/${response.data.data.roomId}`);
-			} else if (response.error) {
-				console.error('Join Error:', response.error.value);
-				const errData = response.error.value as { message?: string };
-				setError(errData.message || '加入房间失败：房间不存在或已满');
+			const response = await colorClashApi.joinRoom(searchId.trim());
+			if (response.success) {
+				navigate(`/room/color-clash/${searchId.trim()}`);
 			} else {
-				setError('加入房间失败');
+				setError(response.error?.message || '加入房间失败：房间不存在或已满');
 			}
 		} catch (err) {
 			setError('加入请求失败，请检查网络');
@@ -147,19 +126,15 @@ export function GuessDrawRoom() {
 		setIsJoining(true);
 		setError(null);
 		try {
-			const response = await guessDrawApi.joinRoom(
+			const response = await colorClashApi.joinRoom(
 				selectedRoom.id,
 				password.trim()
 			);
 
-			if (response.data && response.data.success && response.data.data) {
-				navigate(`/room/guess-draw/${response.data.data.roomId}`);
-			} else if (response.error) {
-				console.error('Join Error:', response.error.value);
-				const errData = response.error.value as { message?: string };
-				setError(errData.message || '密码错误或加入房间失败');
+			if (response.success) {
+				navigate(`/room/color-clash/${selectedRoom.id}`);
 			} else {
-				setError('密码错误或加入房间失败');
+				setError(response.error?.message || '密码错误或加入房间失败');
 			}
 		} catch (error) {
 			console.error('加入房间失败:', error);
@@ -173,15 +148,21 @@ export function GuessDrawRoom() {
 	};
 
 	const handleCreateRoom = () => {
-		navigate('/room/guess-draw/create');
+		navigate('/room/color-clash/create');
 	};
 
-	useEffect(() => {
-		fetchRooms();
-	}, []);
+	const formatGameTime = (seconds: number) => {
+		const minutes = Math.floor(seconds / 60);
+		const remainingSeconds = seconds % 60;
+		return `${minutes}分${remainingSeconds}秒`;
+	};
+
+	const formatCanvasSize = (width: number, height: number) => {
+		return `${width}×${height}`;
+	};
 
 	// 辅助函数：获取状态对应的样式
-	const getStatusConfig = (status: GuessDrawRoom['status']) => {
+	const getStatusConfig = (status: string) => {
 		switch (status) {
 			case 'waiting':
 				return {
@@ -206,7 +187,52 @@ export function GuessDrawRoom() {
 
 	return (
 		<div className="min-h-screen bg-gray-50">
-			<SetTitle title="你猜我画 - 游戏大厅" />
+			<SetTitle title="颜色对抗 - 游戏大厅" />
+
+			{/* 密码输入弹窗 */}
+			<AlertDialog
+				open={isPasswordDialogOpen}
+				onOpenChange={setIsPasswordDialogOpen}
+			>
+				<AlertDialogPopup>
+					<AlertDialogHeader>
+						<AlertDialogTitle>加入私密房间</AlertDialogTitle>
+						<AlertDialogDescription>
+							房间 ID #{selectedRoom?.id} 需要密码才能加入。
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					<div className="px-6 py-4">
+						<Input
+							type="password"
+							placeholder="输入房间密码"
+							value={password}
+							onChange={(e) => setPassword(e.target.value)}
+							onKeyDown={(e) => e.key === 'Enter' && handleJoinWithPassword()}
+						/>
+					</div>
+					<AlertDialogFooter>
+						<Button
+							variant="outline"
+							onClick={() => setIsPasswordDialogOpen(false)}
+						>
+							取消
+						</Button>
+						<Button
+							onClick={handleJoinWithPassword}
+							disabled={!password.trim() || isJoining}
+						>
+							{isJoining ? (
+								<>
+									<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+									加入中
+								</>
+							) : (
+								'加入房间'
+							)}
+						</Button>
+					</AlertDialogFooter>
+				</AlertDialogPopup>
+			</AlertDialog>
 
 			{/* 顶部导航栏 */}
 			<header className="sticky top-0 z-10 border-b bg-white px-4 py-3 sm:px-6 lg:px-8">
@@ -222,7 +248,7 @@ export function GuessDrawRoom() {
 						</Button>
 						<div className="flex items-center gap-2 border-l pl-4">
 							<Gamepad2 className="h-5 w-5 text-gray-900" />
-							<h1 className="text-lg font-bold text-gray-900">你猜我画</h1>
+							<h1 className="text-lg font-bold text-gray-900">颜色对抗</h1>
 						</div>
 					</div>
 
@@ -230,7 +256,7 @@ export function GuessDrawRoom() {
 						<Button
 							variant="ghost"
 							size="sm"
-							onClick={fetchRooms}
+							onClick={() => loadRooms()}
 							disabled={isLoading}
 							className="text-gray-600 hover:bg-gray-100"
 						>
@@ -371,36 +397,45 @@ export function GuessDrawRoom() {
 										</div>
 										<div className="flex flex-col items-center justify-center border-r border-gray-100 last:border-0">
 											<span className="mb-0.5 flex items-center gap-1 text-xs text-gray-400">
-												<Trophy className="h-3 w-3" />
-												回合
+												<Clock className="h-3 w-3" />
+												时长
 											</span>
 											<span className="font-mono text-sm font-bold text-gray-700">
-												{room.rounds}
+												{formatGameTime(room.gameTime)}
 											</span>
 										</div>
 										<div className="flex flex-col items-center justify-center">
 											<span className="mb-0.5 flex items-center gap-1 text-xs text-gray-400">
-												<Clock className="h-3 w-3" />
-												限时
+												<Gamepad2 className="h-3 w-3" />
+												画布
 											</span>
 											<span className="font-mono text-sm font-bold text-gray-700">
-												{room.roundTime}s
+												{formatCanvasSize(room.canvasWidth, room.canvasHeight)}
 											</span>
 										</div>
 									</div>
 
 									{/* 底部：房主与按钮 */}
-									<div className="mt-auto flex items-center justify-center pt-1">
+									<div className="mt-auto flex items-center justify-between pt-1">
+										<div className="flex items-center gap-2 overflow-hidden">
+											<div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-100">
+												<User className="h-3.5 w-3.5 text-gray-500" />
+											</div>
+											<span className="truncate text-xs font-medium text-gray-600">
+												{room.ownerName}
+											</span>
+										</div>
+
 										<Button
 											size="sm"
-											onClick={() => handleListJoin(room)}
+											onClick={() => handleJoinRoom(room)}
 											disabled={
 												isJoining || (room.status === 'playing' && isFull)
 											}
 											variant={
 												room.status === 'playing' ? 'secondary' : 'default'
 											}
-											className={`h-8 w-full px-4 text-sm font-medium ${
+											className={`h-8 px-4 text-xs font-medium ${
 												room.status === 'playing'
 													? 'bg-gray-100 text-gray-900 hover:bg-gray-200'
 													: 'bg-black text-white hover:bg-gray-800'
@@ -408,7 +443,7 @@ export function GuessDrawRoom() {
 										>
 											{isJoining ? (
 												<>
-													<Loader2 className="mr-1 h-4 w-4 animate-spin" />
+													<Loader2 className="mr-1 h-3 w-3 animate-spin" />
 													加入中
 												</>
 											) : room.status === 'playing' ? (
@@ -416,7 +451,7 @@ export function GuessDrawRoom() {
 											) : (
 												'加入'
 											)}
-											<ArrowRight className="ml-1 h-4 w-4" />
+											<ArrowRight className="ml-1 h-3 w-3" />
 										</Button>
 									</div>
 								</div>
@@ -425,51 +460,6 @@ export function GuessDrawRoom() {
 					</div>
 				)}
 			</main>
-
-			{/* 密码输入弹窗 */}
-			<AlertDialog
-				open={isPasswordDialogOpen}
-				onOpenChange={setIsPasswordDialogOpen}
-			>
-				<AlertDialogPopup>
-					<AlertDialogHeader>
-						<AlertDialogTitle>加入私密房间</AlertDialogTitle>
-						<AlertDialogDescription>
-							房间 ID #{selectedRoom?.id} 需要密码才能加入。
-						</AlertDialogDescription>
-					</AlertDialogHeader>
-					<div className="px-6 py-4">
-						<Input
-							type="password"
-							placeholder="输入房间密码"
-							value={password}
-							onChange={(e) => setPassword(e.target.value)}
-							onKeyDown={(e) => e.key === 'Enter' && handleJoinWithPassword()}
-						/>
-					</div>
-					<AlertDialogFooter>
-						<Button
-							variant="outline"
-							onClick={() => setIsPasswordDialogOpen(false)}
-						>
-							取消
-						</Button>
-						<Button
-							onClick={handleJoinWithPassword}
-							disabled={!password.trim() || isJoining}
-						>
-							{isJoining ? (
-								<>
-									<Loader2 className="mr-2 h-4 w-4 animate-spin" />
-									加入中
-								</>
-							) : (
-								'加入房间'
-							)}
-						</Button>
-					</AlertDialogFooter>
-				</AlertDialogPopup>
-			</AlertDialog>
 		</div>
 	);
 }

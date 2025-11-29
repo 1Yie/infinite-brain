@@ -15,11 +15,6 @@ interface BoardStatsProps {
 export function BoardStats({ user, rooms, userStats }: BoardStatsProps) {
 	return (
 		<div className="mb-8 rounded-xl border border-zinc-200 bg-white p-6 dark:border-zinc-700 dark:bg-zinc-800">
-			<div className="mb-6">
-				<h3 className="flex items-center gap-2 text-lg font-semibold text-zinc-900 dark:text-zinc-100">
-					我的统计
-				</h3>
-			</div>
 			<div className="grid grid-cols-2 gap-4 md:grid-cols-4">
 				<div className="text-center">
 					<div className="text-2xl font-bold text-zinc-900 dark:text-zinc-100">

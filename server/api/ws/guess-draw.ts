@@ -359,7 +359,7 @@ export const gameRoute = new Elysia()
 					if (currentRoom.size < 2) {
 						ws.send({
 							type: 'error',
-							message: '至少需要2个玩家才能开始游戏',
+							message: '至少需要 2 名玩家才能开始游戏',
 							timestamp: Date.now(),
 						});
 						return;

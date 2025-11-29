@@ -14,11 +14,15 @@ export function RoomPage() {
 	const navigate = useNavigate();
 	const { user, logout } = useAuth();
 
-	const handleSelectRoomType = (type: 'whiteboard' | 'guess-draw') => {
+	const handleSelectRoomType = (
+		type: 'whiteboard' | 'guess-draw' | 'color-clash'
+	) => {
 		if (type === 'whiteboard') {
 			navigate('/room/whiteboard');
 		} else if (type === 'guess-draw') {
 			navigate('/room/guess-draw');
+		} else if (type === 'color-clash') {
+			navigate('/room/color-clash');
 		}
 	};
 
@@ -103,7 +107,11 @@ export function RoomPage() {
 						选择房间类型
 					</h1>
 					<p className="mt-2 text-lg text-gray-600 dark:text-gray-400">
-						选择您想要创建或加入的房间类型
+						{user ? (
+							<>欢迎回来，{user.name}！</>
+						) : (
+							<>请先登录以访问房间功能。</>
+						)}
 					</p>
 				</header>
 
@@ -129,7 +137,7 @@ export function RoomPage() {
 								白板协作
 							</CardTitle>
 							<CardDescription>
-								多人实时协作的白板，支持绘制、文本、形状等元素
+								多人实时协作的白板，支持绘制、文本、形状等元素。
 							</CardDescription>
 						</CardHeader>
 						<CardContent>
@@ -180,7 +188,7 @@ export function RoomPage() {
 											d="M5 13l4 4L19 7"
 										/>
 									</svg>
-									撤销/重做功能
+									撤销/撤回功能
 								</div>
 								<Button
 									onClick={() => handleSelectRoomType('whiteboard')}
@@ -210,10 +218,10 @@ export function RoomPage() {
 										d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
 									/>
 								</svg>
-								猜画游戏
+								当代“毕加索”
 							</CardTitle>
 							<CardDescription>
-								有趣的猜画游戏，通过绘制和猜测来娱乐和交流
+								有趣的猜画游戏，通过绘制和猜测来娱乐和交流。
 							</CardDescription>
 						</CardHeader>
 						<CardContent>
@@ -264,7 +272,7 @@ export function RoomPage() {
 											d="M5 13l4 4L19 7"
 										/>
 									</svg>
-									计分系统
+									计分排名系统
 								</div>
 								<Button
 									onClick={() => handleSelectRoomType('guess-draw')}
@@ -276,17 +284,94 @@ export function RoomPage() {
 							</div>
 						</CardContent>
 					</Card>
-				</div>
 
-				{/* 底部信息 */}
-				<div className="mt-12 text-center">
-					<p className="text-sm text-gray-500 dark:text-gray-400">
-						{user ? (
-							<>欢迎回来，{user.name}！选择一个房间类型开始协作。</>
-						) : (
-							<>请先登录以访问房间功能。</>
-						)}
-					</p>
+					{/* 颜色对抗 */}
+					<Card className="cursor-pointer transition-all hover:border-gray-400 hover:shadow-lg">
+						<CardHeader>
+							<CardTitle className="flex items-center gap-3">
+								<svg
+									className="h-8 w-8 text-purple-600"
+									fill="none"
+									stroke="currentColor"
+									viewBox="0 0 24 24"
+								>
+									{/* 九个不同颜色的圆点 */}
+									<circle cx="6" cy="6" r="1.5" fill="#FF6B6B" />
+									<circle cx="12" cy="6" r="1.5" fill="#4ECDC4" />
+									<circle cx="18" cy="6" r="1.5" fill="#45B7D1" />
+									<circle cx="6" cy="12" r="1.5" fill="#FFA07A" />
+									<circle cx="12" cy="12" r="1.5" fill="#98D8C8" />
+									<circle cx="18" cy="12" r="1.5" fill="#F7DC6F" />
+									<circle cx="6" cy="18" r="1.5" fill="#BB8FCE" />
+									<circle cx="12" cy="18" r="1.5" fill="#85C1E9" />
+									<circle cx="18" cy="18" r="1.5" fill="#F8C471" />
+								</svg>
+								发奋“涂”墙
+							</CardTitle>
+							<CardDescription>
+								实时多人颜色占领游戏，抢占更多画布空间获胜。
+							</CardDescription>
+						</CardHeader>
+						<CardContent>
+							<div className="space-y-4">
+								<div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+									<svg
+										className="h-4 w-4"
+										fill="none"
+										stroke="currentColor"
+										viewBox="0 0 24 24"
+									>
+										<path
+											strokeLinecap="round"
+											strokeLinejoin="round"
+											strokeWidth={2}
+											d="M5 13l4 4L19 7"
+										/>
+									</svg>
+									实时颜色占领
+								</div>
+								<div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+									<svg
+										className="h-4 w-4"
+										fill="none"
+										stroke="currentColor"
+										viewBox="0 0 24 24"
+									>
+										<path
+											strokeLinecap="round"
+											strokeLinejoin="round"
+											strokeWidth={2}
+											d="M5 13l4 4L19 7"
+										/>
+									</svg>
+									多人在线对战
+								</div>
+								<div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+									<svg
+										className="h-4 w-4"
+										fill="none"
+										stroke="currentColor"
+										viewBox="0 0 24 24"
+									>
+										<path
+											strokeLinecap="round"
+											strokeLinejoin="round"
+											strokeWidth={2}
+											d="M5 13l4 4L19 7"
+										/>
+									</svg>
+									计分排名系统
+								</div>
+								<Button
+									onClick={() => handleSelectRoomType('color-clash')}
+									className="w-full"
+									size="lg"
+								>
+									进入颜色对抗
+								</Button>
+							</div>
+						</CardContent>
+					</Card>
 				</div>
 			</div>
 		</div>

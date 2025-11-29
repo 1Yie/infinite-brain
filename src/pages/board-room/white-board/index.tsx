@@ -230,7 +230,7 @@ export function Whiteboard({ roomId: roomIdProp }: { roomId?: string }) {
 					<AlertDialogPopup>
 						<AlertDialogHeader>
 							<AlertDialogTitle>加入私密房间</AlertDialogTitle>
-							<AlertDialogDescription>请输入房间密码</AlertDialogDescription>
+							<AlertDialogDescription>请输入房间密码。</AlertDialogDescription>
 						</AlertDialogHeader>
 						<div className="px-6 py-4">
 							<Input
@@ -269,7 +269,7 @@ export function Whiteboard({ roomId: roomIdProp }: { roomId?: string }) {
 
 	return (
 		<>
-			<SetTitle title={`Infinite Brain - ${roomInfo?.name}`} />
+			<SetTitle title={`白板 - ${roomInfo?.name}`} />
 			<div className="flex h-screen flex-col overflow-hidden bg-gray-50 dark:bg-gray-900">
 				<WhiteboardToolbar
 					currentTool={tool}
