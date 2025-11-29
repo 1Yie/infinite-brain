@@ -93,7 +93,7 @@ function ColorCanvas({
 	const throttledMoveRef = useRef(
 		throttle((data: { x: number; y: number; color: string; size: number }) => {
 			onMove(data);
-		}, 20)
+		}, 60)
 	);
 
 	// 辅助函数：绘制线条（解决点点状问题的核心）
