@@ -1,7 +1,6 @@
-'use client';
-
+/* eslint-disable */
 import {
-	ElementType,
+	type ElementType,
 	useEffect,
 	useRef,
 	useState,
