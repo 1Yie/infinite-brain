@@ -5,16 +5,7 @@ import { colorClashRooms, colorClashPlayers } from '../../db/schema';
 import { eq, and, sql } from 'drizzle-orm';
 import type { InferSelectModel } from 'drizzle-orm';
 
-// ==========================================
-// 类型定义
-// ==========================================
-
 type ColorClashRoom = InferSelectModel<typeof colorClashRooms>;
-
-// ==========================================
-// 类型定义
-// ==========================================
-
 type ColorClashClientMessage =
 	| { type: 'join-room'; roomId: string }
 	| { type: 'leave-room' }
@@ -26,7 +17,7 @@ type ColorClashClientMessage =
 	| { type: 'game-chat'; message: string; id?: string }
 	| { type: 'ping' };
 
-// 类型守卫函数，确保ColorClashClientMessage类型被使用
+// 类型守卫函数，确保 ColorClashClientMessage 类型被使用
 function isColorClashClientMessage(
 	message: unknown
 ): message is ColorClashClientMessage {
@@ -114,10 +105,6 @@ interface ColorClashPlayer {
 	y?: number; // 玩家在画布上的Y坐标
 }
 
-// ==========================================
-// 辅助函数
-// ==========================================
-
 function processDateField(
 	dateValue: Date | number | string | null | undefined
 ): string | null {
@@ -160,10 +147,6 @@ function processRoomDateFields(
 	return processedData;
 }
 
-// ==========================================
-// 全局状态管理
-// ==========================================
-
 // 房间连接管理
 const roomConnections = new Map<string, Set<WebSocket>>();
 // 游戏结束定时器
@@ -179,10 +162,6 @@ const roomUsers = new Map<string, Set<string>>();
 const userConnections = new Map<string, WebSocket>();
 // 游戏状态缓存
 const gameStates = new Map<string, ColorClashGameState>();
-
-// ==========================================
-// 游戏逻辑函数
-// ==========================================
 
 function broadcastToAll(roomId: string, message: ColorClashServerMessage) {
 	const connections = roomConnections.get(roomId);
@@ -563,10 +542,6 @@ async function addPlayerToRoom(
 	}
 }
 
-// ==========================================
-// Elysia 路由定义
-// ==========================================
-
 export const colorClashWsRoute = new Elysia()
 	.use(optionalAuth)
 	.derive(() => ({ connectionId: crypto.randomUUID() }))
@@ -602,7 +577,7 @@ export const colorClashWsRoute = new Elysia()
 			const username = user.name;
 			const { roomId } = ws.data.query;
 
-			// 1. 管理连接
+			// 管理连接
 			const existingConnection = userConnections.get(userId);
 			if (existingConnection) {
 				try {
@@ -640,7 +615,7 @@ export const colorClashWsRoute = new Elysia()
 				})
 			);
 
-			// 2. 初始化游戏状态
+			// 初始化游戏状态
 			let gameState = gameStates.get(roomId) || (await getGameState(roomId));
 
 			if (!gameState) {
@@ -682,13 +657,11 @@ export const colorClashWsRoute = new Elysia()
 			}
 			gameStates.set(roomId, gameState!);
 
-			// 3. 处理玩家进入
+			// 处理玩家进入
 			const existingPlayer = gameState.players.find(
 				(p: ColorClashPlayer) => p.userId === userId
 			);
 			if (!existingPlayer) {
-				// 这里我们依然需要写入数据库来记录玩家加入，但频率较低，通常没问题
-
 				await addPlayerToRoom(roomId, userId, username);
 				const newPlayer = {
 					userId,
@@ -717,7 +690,7 @@ export const colorClashWsRoute = new Elysia()
 				existingPlayer.lastActivity = Date.now();
 			}
 
-			// 4. 发送房间信息
+			// 发送房间信息
 			try {
 				const dbRoom = await db
 					.select()
@@ -829,7 +802,6 @@ export const colorClashWsRoute = new Elysia()
 							if (p) p.score = score;
 						});
 
-						// 关键修改：【不要】在这里调用 await saveGameState
 						// 只更新内存状态
 						gameStates.set(roomId, gameState);
 
@@ -866,7 +838,7 @@ export const colorClashWsRoute = new Elysia()
 						if (!gameState) return;
 						if (gameState.isActive) return;
 
-						// 简单的鉴权
+						// 只有房主才能启动游戏
 						const room = await db
 							.select()
 							.from(colorClashRooms)
