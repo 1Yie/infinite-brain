@@ -1,6 +1,6 @@
 import { client } from './client';
 
-export interface Room {
+export interface BoardRoom {
 	id: string;
 	name: string;
 	ownerId: string;
@@ -10,12 +10,12 @@ export interface Room {
 	creatorName?: string;
 }
 
-export const roomApi = {
+export const boardApi = {
 	/**
 	 * 获取房间列表
 	 */
-	getRooms: async (): Promise<Room[]> => {
-		const { data, error } = await client.api.rooms.get();
+	getRooms: async (): Promise<BoardRoom[]> => {
+		const { data, error } = await client.api.boards.get();
 
 		if (error) {
 			throw new Error(error.value?.toString() || '获取房间列表失败');
@@ -25,7 +25,21 @@ export const roomApi = {
 			throw new Error(data.error || '获取房间列表失败');
 		}
 
-		return data.data as Room[];
+		return data.data as BoardRoom[];
+	},
+
+	getRoom: async (id: string): Promise<BoardRoom> => {
+		const { data, error } = await client.api.boards({ id }).get();
+
+		if (error) {
+			throw new Error(error.value?.toString() || '获取房间失败');
+		}
+
+		if (!data.success) {
+			throw new Error(data.error || '获取房间失败');
+		}
+
+		return data.room as BoardRoom;
 	},
 
 	/**
@@ -39,7 +53,7 @@ export const roomApi = {
 		isPrivate?: boolean,
 		password?: string
 	): Promise<{ roomId: string; name: string }> => {
-		const { data, error } = await client.api.rooms.create.post({
+		const { data, error } = await client.api.boards.create.post({
 			name,
 			isPrivate,
 			password,
@@ -61,7 +75,7 @@ export const roomApi = {
 	 * @param id 房间ID
 	 */
 	deleteRoom: async (id: string): Promise<boolean> => {
-		const { data, error } = await client.api.rooms({ id }).delete();
+		const { data, error } = await client.api.boards({ id }).delete();
 
 		if (error) {
 			throw new Error(error.value?.toString() || '删除房间失败');
@@ -79,8 +93,8 @@ export const roomApi = {
 	 * @param roomId 房间ID
 	 * @param password 密码（如果需要）
 	 */
-	joinRoom: async (roomId: string, password?: string): Promise<Room> => {
-		const { data, error } = await client.api.rooms.join.post({
+	joinRoom: async (roomId: string, password?: string): Promise<BoardRoom> => {
+		const { data, error } = await client.api.boards.join.post({
 			roomId,
 			password,
 		});
@@ -93,7 +107,7 @@ export const roomApi = {
 			throw new Error(data.error || '加入房间失败');
 		}
 
-		return data.room as Room;
+		return data.room as BoardRoom;
 	},
 
 	/**
@@ -105,7 +119,7 @@ export const roomApi = {
 		totalPixels: number;
 		todayPixels: number;
 	}> => {
-		const { data, error } = await client.api.rooms.stats.get();
+		const { data, error } = await client.api.boards.stats.get();
 
 		if (error) {
 			throw new Error(error.value?.toString() || '获取统计数据失败');

@@ -1,9 +1,9 @@
-import type { Room } from '../../api/room';
+import type { BoardRoom } from '../../api/board';
 import type { User } from '../../api/auth';
 
 interface BoardStatsProps {
 	user: User | null;
-	rooms: Room[];
+	rooms: BoardRoom[];
 	userStats: {
 		totalStrokes: number;
 		todayStrokes: number;

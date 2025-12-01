@@ -7,7 +7,7 @@ import { WhiteboardSidebar } from './whiteboard-sidebar';
 import { WhiteboardToolbar } from './whiteboard-toolbar';
 import { WhiteboardCanvas } from './whiteboard-canvas';
 import type { WhiteboardCanvasHandle, DrawData } from './whiteboard-canvas';
-import { roomApi, type Room } from '../../../api/room';
+import { boardApi, type BoardRoom } from '../../../api/board';
 import {
 	AlertDialog,
 	AlertDialogClose,
@@ -20,6 +20,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { SetTitle } from '@/utils/set-title';
+import { toast } from 'sonner';
 
 export function Whiteboard({ roomId: roomIdProp }: { roomId?: string }) {
 	const params = useParams<{ roomId: string }>();
@@ -35,7 +36,7 @@ export function Whiteboard({ roomId: roomIdProp }: { roomId?: string }) {
 	const [coords, setCoords] = useState({ x: 0, y: 0 });
 	const [scale, setScale] = useState(1);
 
-	const [roomInfo, setRoomInfo] = useState<Room | null>(null);
+	const [roomInfo, setRoomInfo] = useState<BoardRoom | null>(null);
 	const [isChecking, setIsChecking] = useState(true);
 	const [password, setPassword] = useState('');
 	const [showPasswordDialog, setShowPasswordDialog] = useState(false);
@@ -59,7 +60,7 @@ export function Whiteboard({ roomId: roomIdProp }: { roomId?: string }) {
 	useEffect(() => {
 		const fetchRoomName = async () => {
 			try {
-				const rooms = await roomApi.getRooms();
+				const rooms = await boardApi.getRooms();
 				const room = rooms.find((r) => r.id === roomId);
 				if (room) {
 					setRoomInfo(room);
@@ -90,7 +91,7 @@ export function Whiteboard({ roomId: roomIdProp }: { roomId?: string }) {
 
 			try {
 				setIsChecking(true);
-				const room = await roomApi.joinRoom(roomId);
+				const room = await boardApi.joinRoom(roomId);
 				setRoomInfo(room);
 				setAuthorized(true);
 			} catch (error) {
@@ -152,7 +153,6 @@ export function Whiteboard({ roomId: roomIdProp }: { roomId?: string }) {
 			} else if (message.type === 'error') {
 				// 处理服务器发送的错误消息
 				console.error(`服务器错误: ${message.message}`);
-				// 不显示弹窗，只在控制台记录错误
 			}
 		});
 
@@ -185,7 +185,7 @@ export function Whiteboard({ roomId: roomIdProp }: { roomId?: string }) {
 		} else {
 			sendUndo();
 		}
-	}, [isConnected, sendUndo, userId, isLogged]);
+	}, [isConnected, sendUndo, userId]);
 
 	// 处理重做
 	const handleRedo = useCallback(() => {
@@ -201,14 +201,14 @@ export function Whiteboard({ roomId: roomIdProp }: { roomId?: string }) {
 
 	const handleJoinRoom = async () => {
 		try {
-			const room = await roomApi.joinRoom(roomId, password);
+			const room = await boardApi.joinRoom(roomId, password);
 			sessionStorage.setItem(`room_auth_${roomId}`, 'true');
 			setRoomInfo(room);
 			setShowPasswordDialog(false);
 			setPassword('');
 			setAuthorized(true);
 		} catch (error) {
-			alert(error instanceof Error ? error.message : '加入房间失败');
+			toast.error(error instanceof Error ? error.message : '加入房间失败');
 		}
 	};
 

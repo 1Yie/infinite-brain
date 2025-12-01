@@ -15,7 +15,7 @@ export const users = sqliteTable('users', {
 	),
 });
 
-export const rooms = sqliteTable('rooms', {
+export const boardRooms = sqliteTable('board_rooms', {
 	id: text('id').primaryKey(),
 	name: text('name').notNull(),
 	ownerId: text('owner_id').notNull(),
@@ -96,7 +96,7 @@ export const strokes = sqliteTable('strokes', {
 
 	roomId: text('room_id')
 		.notNull()
-		.references(() => rooms.id, { onDelete: 'cascade' }),
+		.references(() => boardRooms.id, { onDelete: 'cascade' }),
 
 	userId: text('user_id').notNull(),
 
@@ -118,18 +118,15 @@ export const viewStates = sqliteTable(
 
 		offsetX: integer('offset_x').notNull(),
 		offsetY: integer('offset_y').notNull(),
-		scale: integer('scale').notNull(), // 存储为整数，避免浮点精度问题
+		scale: integer('scale').notNull(),
 
 		updatedAt: integer('updated_at', { mode: 'timestamp' }).$defaultFn(
 			() => new Date()
 		),
 	},
-	(table) => ({
-		userRoomUnique: uniqueIndex('view_states_user_room_unique').on(
-			table.userId,
-			table.roomId
-		),
-	})
+	(table) => [
+		uniqueIndex('view_states_user_room_unique').on(table.userId, table.roomId),
+	]
 );
 
 export const userStats = sqliteTable('user_stats', {
@@ -148,14 +145,14 @@ export const userStats = sqliteTable('user_stats', {
 	),
 });
 
-export const roomsRelations = relations(rooms, ({ many }) => ({
+export const boardRoomsRelations = relations(boardRooms, ({ many }) => ({
 	strokes: many(strokes),
 }));
 
 export const strokesRelations = relations(strokes, ({ one }) => ({
-	room: one(rooms, {
+	room: one(boardRooms, {
 		fields: [strokes.roomId],
-		references: [rooms.id],
+		references: [boardRooms.id],
 	}),
 }));
 

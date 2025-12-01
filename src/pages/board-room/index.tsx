@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { roomApi, type Room } from '../../api/room';
+import { boardApi, type BoardRoom } from '../../api/board';
 import { useAuth } from '../../context/auth-context';
 import {
 	AlertDialog,
@@ -21,7 +21,7 @@ export function WhiteboardPage() {
 	const { user } = useAuth();
 
 	// 房间状态
-	const [rooms, setRooms] = useState<Room[]>([]);
+	const [rooms, setRooms] = useState<BoardRoom[]>([]);
 	const [loading, setLoading] = useState(true);
 
 	// UI 状态
@@ -50,11 +50,11 @@ export function WhiteboardPage() {
 	const fetchRooms = useCallback(async () => {
 		try {
 			setLoading(true);
-			const data = await roomApi.getRooms();
+			const data = await boardApi.getRooms();
 			setRooms(data);
 
 			// 获取用户统计数据
-			const stats = await roomApi.getUserStats();
+			const stats = await boardApi.getUserStats();
 			setUserStats(stats);
 		} finally {
 			setLoading(false);
@@ -79,7 +79,7 @@ export function WhiteboardPage() {
 	// 加入私密房间处理
 	const handleJoinRoom = async () => {
 		try {
-			await roomApi.joinRoom(joinRoomId, joinPassword);
+			await boardApi.joinRoom(joinRoomId, joinPassword);
 			sessionStorage.setItem(`room_auth_${joinRoomId}`, 'true');
 			setIsJoinDialogOpen(false);
 			setJoinPassword('');
@@ -108,7 +108,7 @@ export function WhiteboardPage() {
 	// 确认删除房间
 	const confirmDeleteRoom = async () => {
 		if (roomToDelete) {
-			await roomApi.deleteRoom(roomToDelete);
+			await boardApi.deleteRoom(roomToDelete);
 			setRooms((prev) => prev.filter((r) => r.id !== roomToDelete));
 			setRoomToDelete(null);
 		}
@@ -116,7 +116,7 @@ export function WhiteboardPage() {
 	};
 
 	// 渲染房间创建时间
-	const renderRoomCreatedAt = (room: Room) => {
+	const renderRoomCreatedAt = (room: BoardRoom) => {
 		if (room.id === 'default-room') {
 			return (
 				<span className="flex items-center gap-1.5 text-xs text-zinc-500 dark:text-zinc-400">

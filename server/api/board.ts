@@ -1,27 +1,30 @@
 import { Elysia, t } from 'elysia';
 import { db } from '../db';
-import { rooms, strokes, userStats, users } from '../db/schema';
+import { boardRooms, strokes, userStats, users } from '../db/schema';
 import { eq, desc, sql } from 'drizzle-orm';
 import { auth } from '../utils/verify';
 
-export const roomRoutes = new Elysia({ prefix: '/rooms' })
+export const boardRoutes = new Elysia({ prefix: '/boards' })
 	.use(auth)
 
 	.get('/', async () => {
 		try {
 			const allRooms = await db
 				.select({
-					id: rooms.id,
-					name: rooms.name,
-					ownerId: rooms.ownerId,
-					isPrivate: rooms.isPrivate,
-					password: rooms.password,
-					createdAt: rooms.createdAt,
+					id: boardRooms.id,
+					name: boardRooms.name,
+					ownerId: boardRooms.ownerId,
+					isPrivate: boardRooms.isPrivate,
+					password: boardRooms.password,
+					createdAt: boardRooms.createdAt,
 					creatorName: users.username,
 				})
-				.from(rooms)
-				.leftJoin(users, eq(sql`CAST(${rooms.ownerId} AS INTEGER)`, users.id))
-				.orderBy(desc(rooms.createdAt));
+				.from(boardRooms)
+				.leftJoin(
+					users,
+					eq(sql`CAST(${boardRooms.ownerId} AS INTEGER)`, users.id)
+				)
+				.orderBy(desc(boardRooms.createdAt));
 			return { success: true, data: allRooms };
 		} catch (e) {
 			console.error(e);
@@ -34,7 +37,7 @@ export const roomRoutes = new Elysia({ prefix: '/rooms' })
 		async ({ body, user }) => {
 			const roomId = crypto.randomUUID();
 			try {
-				await db.insert(rooms).values({
+				await db.insert(boardRooms).values({
 					id: roomId,
 					name: body.name,
 					ownerId: user.id.toString(),
@@ -60,8 +63,8 @@ export const roomRoutes = new Elysia({ prefix: '/rooms' })
 	.delete(
 		'/:id',
 		async ({ params, user }) => {
-			const room = await db.query.rooms.findFirst({
-				where: eq(rooms.id, params.id),
+			const room = await db.query.boardRooms.findFirst({
+				where: eq(boardRooms.id, params.id),
 			});
 
 			if (!room) throw new Error('房间不存在');
@@ -71,7 +74,7 @@ export const roomRoutes = new Elysia({ prefix: '/rooms' })
 			try {
 				await db.transaction(async (tx) => {
 					await tx.delete(strokes).where(eq(strokes.roomId, params.id));
-					await tx.delete(rooms).where(eq(rooms.id, params.id));
+					await tx.delete(boardRooms).where(eq(boardRooms.id, params.id));
 				});
 
 				return { success: true };
@@ -86,12 +89,30 @@ export const roomRoutes = new Elysia({ prefix: '/rooms' })
 			}),
 		}
 	)
+
+	.get('/:id', async ({ params }) => {
+		try {
+			const room = await db.query.boardRooms.findFirst({
+				where: eq(boardRooms.id, params.id),
+			});
+
+			if (!room) {
+				return { success: false, error: '房间不存在' };
+			}
+
+			return { success: true, room };
+		} catch (e) {
+			console.error(e);
+			return { success: false, error: '获取房间失败' };
+		}
+	})
+
 	.post(
 		'/join',
 		async ({ body }) => {
 			try {
-				const room = await db.query.rooms.findFirst({
-					where: eq(rooms.id, body.roomId),
+				const room = await db.query.boardRooms.findFirst({
+					where: eq(boardRooms.id, body.roomId),
 				});
 
 				if (!room) {

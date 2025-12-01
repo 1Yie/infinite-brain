@@ -53,7 +53,7 @@ interface UseWebSocketReturn {
 	sendCursor: (data: DrawData) => void;
 	// sendClear: () => void;
 	sendUndo: (strokeId?: string) => void;
-	sendRedo: (stroke?: any) => void;
+	sendRedo: (stroke?: StrokeData) => void;
 	sendStrokeFinish: (data: StrokeData) => void;
 	onMessage: (callback: (message: ServerMessage) => void) => () => void;
 }
@@ -236,7 +236,7 @@ export function useWebSocket(
 	);
 
 	const sendRedo = useCallback(
-		(stroke?: any) => {
+		(stroke?: StrokeData) => {
 			if (socketRef.current && isConnected) {
 				wsApi.sendRedo(socketRef.current, stroke);
 			}

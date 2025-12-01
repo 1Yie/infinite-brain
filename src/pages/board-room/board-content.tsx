@@ -1,4 +1,4 @@
-import { type Room } from '../../api/room';
+import { type BoardRoom } from '../../api/board';
 import { type User } from '../../api/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -6,7 +6,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 
 interface RoomContentProps {
 	user: User | null;
-	rooms: Room[];
+	rooms: BoardRoom[];
 	loading: boolean;
 	newRoomName: string;
 	setNewRoomName: (name: string) => void;
@@ -18,7 +18,7 @@ interface RoomContentProps {
 	handleCreateRoom: (e: React.FormEvent) => void;
 	handleEnterRoom: (roomId: string) => void;
 	handleDeleteRoom: (e: React.MouseEvent, roomId: string) => void;
-	renderRoomCreatedAt: (room: Room) => React.ReactNode;
+	renderRoomCreatedAt: (room: BoardRoom) => React.ReactNode;
 }
 
 export function RoomContent({

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { roomApi } from '../../../api/room';
+import { boardApi } from '../../../api/board';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 
@@ -30,7 +30,7 @@ export const WhiteboardSidebar: React.FC<WhiteboardSidebarProps> = ({
 	useEffect(() => {
 		const fetchRoomName = async () => {
 			try {
-				const rooms = await roomApi.getRooms();
+				const rooms = await boardApi.getRooms();
 				const room = rooms.find((r) => r.id === roomId);
 				if (room) {
 					setRoomName(room.name);

@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
-import { roomApi } from '@/api/room';
+import { boardApi } from '@/api/board';
 import { ArrowLeft, Plus, Loader2, Pencil, Lock, Users } from 'lucide-react';
 
 export function CreateWhiteboardRoom() {
@@ -34,7 +34,7 @@ export function CreateWhiteboardRoom() {
 		setIsCreating(true);
 
 		try {
-			const response = await roomApi.createRoom(
+			const response = await boardApi.createRoom(
 				formData.name.trim(),
 				formData.isPrivate,
 				formData.isPrivate ? formData.password.trim() : undefined

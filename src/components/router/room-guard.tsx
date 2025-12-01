@@ -1,16 +1,21 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { guessDrawApi } from '@/api/guess-draw';
+import { colorClashApi } from '@/api/color-clash';
+import { boardApi } from '@/api/board';
 import { Loader2 } from 'lucide-react';
+
+type RoomType = 'whiteboard' | 'guess-draw' | 'color-clash';
 
 interface RoomGuardProps {
 	children: React.ReactNode;
+	type: RoomType;
 }
 
 /**
- * 房间守卫组件 - 检查房间是否存在，不存在则重定向到大厅
+ * 房间守卫组件 - 根据房间类型检查房间是否存在，不存在则重定向到大厅
  */
-export function RoomGuard({ children }: RoomGuardProps) {
+export function RoomGuard({ children, type }: RoomGuardProps) {
 	const { roomId } = useParams<{ roomId: string }>();
 	const navigate = useNavigate();
 	const [isChecking, setIsChecking] = useState(true);
@@ -18,21 +23,28 @@ export function RoomGuard({ children }: RoomGuardProps) {
 
 	useEffect(() => {
 		if (!roomId) {
-			navigate('/room/guess-draw');
+			navigate('/room');
 			return;
 		}
 
 		const checkRoom = async () => {
 			try {
-				const response = await guessDrawApi.getRoomState(roomId);
-				if (response.success) {
+				const apiMap: Record<RoomType, () => Promise<boolean>> = {
+					'guess-draw': () =>
+						guessDrawApi.getRoomState(roomId).then((r) => !!r.success),
+					'color-clash': () =>
+						colorClashApi.getRoom(roomId).then((r) => !!r.success),
+					whiteboard: () => boardApi.getRoom(roomId).then((r) => !!r),
+				};
+
+				const isRoomValid = await apiMap[type]().catch(() => false);
+
+				if (isRoomValid) {
 					setIsValid(true);
 				} else {
-					// 房间不存在，跳转到 404 页面
 					navigate('/not-found');
 				}
 			} catch {
-				// API 调用失败（404等），跳转到 404 页面
 				navigate('/not-found');
 			} finally {
 				setIsChecking(false);
@@ -40,7 +52,7 @@ export function RoomGuard({ children }: RoomGuardProps) {
 		};
 
 		checkRoom();
-	}, [roomId, navigate]);
+	}, [roomId, navigate, type]);
 
 	if (isChecking) {
 		return (
@@ -51,7 +63,7 @@ export function RoomGuard({ children }: RoomGuardProps) {
 	}
 
 	if (!isValid) {
-		return null; // 不会渲染，因为会重定向
+		return null;
 	}
 
 	return <>{children}</>;

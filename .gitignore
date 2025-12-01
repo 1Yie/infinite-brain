@@ -27,4 +27,8 @@ dist-ssr
 
 *.db
 
+llms.txt
+
+.vscode
+
 /server/*.dbserver/sqlite.db

@@ -1,3 +1,4 @@
+/* eslint-disable */
 import { db } from './db';
 import { users, strokes } from './db/schema';
 
@@ -15,9 +16,9 @@ async function migrate() {
       )
     `);
 
-		// 创建rooms表
+		// 创建board_rooms表
 		await db.run(`
-      CREATE TABLE IF NOT EXISTS rooms (
+      CREATE TABLE IF NOT EXISTS board_rooms (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
         owner_id TEXT NOT NULL,
@@ -29,7 +30,7 @@ async function migrate() {
 
 		// 插入默认房间
 		await db.run(`
-      INSERT OR IGNORE INTO rooms (id, name, owner_id, is_private, password, created_at)
+      INSERT OR IGNORE INTO board_rooms (id, name, owner_id, is_private, password, created_at)
       VALUES ('default-room', '默认房间', 'system', 0, NULL, CURRENT_TIMESTAMP)
     `);
 
@@ -41,7 +42,8 @@ async function migrate() {
         user_id TEXT NOT NULL,
         data TEXT NOT NULL,
         is_deleted INTEGER DEFAULT 0,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (room_id) REFERENCES board_rooms(id) ON DELETE CASCADE
       )
     `);
 

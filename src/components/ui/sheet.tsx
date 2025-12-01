@@ -1,5 +1,5 @@
 'use client';
-
+/* eslint-disable */
 import { Dialog as SheetPrimitive } from '@base-ui-components/react/dialog';
 import { XIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';

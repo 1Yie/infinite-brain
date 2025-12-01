@@ -83,9 +83,9 @@ export const router = createBrowserRouter([
 			{
 				path: 'room/whiteboard/:roomId',
 				element: (
-					<>
+					<RoomGuard type="whiteboard">
 						<Whiteboard />
-					</>
+					</RoomGuard>
 				),
 			},
 			{
@@ -109,7 +109,7 @@ export const router = createBrowserRouter([
 			{
 				path: 'room/guess-draw/:roomId',
 				element: (
-					<RoomGuard>
+					<RoomGuard type="guess-draw">
 						<GuessDrawPage />
 					</RoomGuard>
 				),
@@ -135,9 +135,9 @@ export const router = createBrowserRouter([
 			{
 				path: 'room/color-clash/:roomId',
 				element: (
-					<>
+					<RoomGuard type="color-clash">
 						<ColorClash />
-					</>
+					</RoomGuard>
 				),
 			},
 		],
