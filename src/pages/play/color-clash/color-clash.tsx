@@ -18,7 +18,7 @@ import {
 	type ColorClashServerMessage,
 } from '@/api/color-clash';
 
-import { Users, ArrowLeft, Gamepad2, Clock } from 'lucide-react';
+import { Users, ArrowLeft, Gamepad2, Clock, Loader2 } from 'lucide-react';
 
 import { useAuth } from '@/context/auth-context';
 import { toast } from 'sonner';
@@ -724,8 +724,8 @@ export function ColorClash() {
 
 	if (!gameState) {
 		return (
-			<div className="flex h-screen items-center justify-center">
-				<div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-900 border-t-transparent"></div>
+			<div className="flex min-h-screen items-center justify-center">
+				<Loader2 className="mx-auto h-8 w-8 animate-spin" />
 			</div>
 		);
 	}
