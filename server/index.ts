@@ -21,7 +21,7 @@ await db
 const app = new Elysia()
 	.use(
 		cors({
-			// origin: ['https://board.ichiyo.in', 'https://board.server.ichiyo.in'],
+			// origin: ['https://infinite.ichiyo.in', 'https://infinite.server.ichiyo.in'],
 			origin: ['http://localhost:5173', 'http://localhost:3000'],
 			credentials: true,
 		})

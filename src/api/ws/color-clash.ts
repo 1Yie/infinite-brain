@@ -17,11 +17,12 @@ type ColorClashSocket = ReturnType<typeof createColorClashConnection>;
 /**
  * 提取消息类型 (从 Socket 的 send 方法参数中提取)
  */
-type ColorClashClientMessage = Parameters<ColorClashSocket['send']>[0];
+type ColorClashClientMessageType = Parameters<ColorClashSocket['send']>[0];
 
 /**
- * 提取 Draw 消息类型 (给外部组件使用)
+ * 提取消息类型 (给外部使用)
  */
+export type ColorClashClientMessage = ColorClashClientMessageType;
 export type ColorClashDrawMessage = Extract<
 	ColorClashClientMessage,
 	{ type: 'draw' }
@@ -44,14 +45,14 @@ export const colorClashWsApi = {
 	 * 发送绘图 (类型安全)
 	 */
 	sendDraw: (socket: ColorClashSocket, data: ColorClashDrawMessage['data']) => {
-		socket.send({ type: 'draw', data } as ColorClashClientMessage);
+		socket.send({ type: 'draw', data } as ColorClashClientMessageType);
 	},
 
 	/**
 	 * 开始游戏
 	 */
 	sendGameStart: (socket: ColorClashSocket) => {
-		socket.send({ type: 'game-start' } as ColorClashClientMessage);
+		socket.send({ type: 'game-start' } as ColorClashClientMessageType);
 	},
 
 	/**
@@ -66,7 +67,7 @@ export const colorClashWsApi = {
 				type: 'game-chat',
 				message: data.message,
 				username: data.username,
-			} as ColorClashClientMessage;
+			} as ColorClashClientMessageType;
 			console.log('sending chat message:', msg);
 			socket.send(msg);
 		} catch (error) {
@@ -79,6 +80,6 @@ export const colorClashWsApi = {
 	 * 发送心跳包
 	 */
 	sendPing: (socket: ColorClashSocket) => {
-		socket.send({ type: 'ping' } as ColorClashClientMessage);
+		socket.send({ type: 'ping' } as ColorClashClientMessageType);
 	},
 };

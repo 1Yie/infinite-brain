@@ -11,8 +11,8 @@ import {
 	DialogFooter,
 } from '@/components/ui/dialog';
 
+import { useColorClashWebSocket } from '@/hooks/use-color-clash-websocket';
 import {
-	colorClashWsApi,
 	type ColorClashGameState,
 	type ColorClashPlayer,
 	type ColorClashServerMessage,
@@ -26,7 +26,7 @@ import { throttle } from 'lodash';
 import { SetTitle } from '@/utils/set-title';
 // 绘图更新的数据结构
 interface DrawUpdate {
-	userId: string; // 新增 userId 以便连接轨迹
+	userId: string; // userId 以便连接轨迹
 	x: number;
 	y: number;
 	color: string;
@@ -96,7 +96,7 @@ function ColorCanvas({
 		}, 0)
 	);
 
-	// 辅助函数：绘制线条（解决点点状问题的核心）
+	// 辅助函数：绘制线条
 	const drawLine = (
 		ctx: CanvasRenderingContext2D,
 		start: { x: number; y: number },
@@ -475,10 +475,6 @@ export function ColorClash() {
 	const navigate = useNavigate();
 	const { user } = useAuth();
 	const [gameState, setGameState] = useState<ColorClashGameState | null>(null);
-	const [socket, setSocket] = useState<ReturnType<
-		typeof colorClashWsApi.connect
-	> | null>(null);
-	const [isConnected, setIsConnected] = useState(false);
 	const [timeLeft, setTimeLeft] = useState<number | null>(null);
 	const [gameEndDialog, setGameEndDialog] = useState<{
 		open: boolean;
@@ -489,6 +485,9 @@ export function ColorClash() {
 		title: '',
 		description: '',
 	});
+
+	// 使用 WebSocket Hook
+	const colorClashWs = useColorClashWebSocket(!!roomId && !!user, roomId);
 
 	// 格式化时间显示
 	const formatTime = (seconds: number) => {
@@ -650,56 +649,15 @@ export function ColorClash() {
 		[]
 	);
 
+	// 订阅 WebSocket 消息
 	useEffect(() => {
-		if (!roomId || !user) return;
-
-		// 用于跟踪当前连接，防止重复连接
-		let isCancelled = false;
-		let currentWs: ReturnType<typeof colorClashWsApi.connect> | null = null;
-
-		const connectWebSocket = async () => {
-			try {
-				// 如果已有连接，先关闭它
-				if (currentWs) {
-					currentWs.close();
-				}
-
-				const ws = await colorClashWsApi.connect(roomId);
-
-				// 如果组件已经卸载，直接关闭连接
-				if (isCancelled) {
-					ws.close();
-					return;
-				}
-
-				currentWs = ws;
-				setSocket(ws);
-				setIsConnected(true);
-
-				ws.subscribe((message) =>
-					handleWebSocketMessage(message.data as ColorClashServerMessage)
-				);
-			} catch (error) {
-				console.error('WebSocket连接失败:', error);
-				toast.error('连接失败，请重试');
-
-				// 如果连接失败且组件未卸载，稍后重试
-				if (!isCancelled) {
-					setTimeout(connectWebSocket, 3000);
-				}
+		const unsubscribe = colorClashWs.onMessage(
+			(message: ColorClashServerMessage) => {
+				handleWebSocketMessage(message);
 			}
-		};
-
-		connectWebSocket();
-
-		// 清理函数
-		return () => {
-			isCancelled = true;
-			if (currentWs) {
-				currentWs.close();
-			}
-		};
-	}, [roomId, user, handleWebSocketMessage]);
+		);
+		return () => unsubscribe();
+	}, [colorClashWs, handleWebSocketMessage]);
 
 	// 处理倒计时逻辑
 	useEffect(() => {
@@ -727,14 +685,14 @@ export function ColorClash() {
 
 	const handleDraw = useCallback(
 		(data: { x: number; y: number; color: string; size: number }) => {
-			if (!socket) return;
-			colorClashWsApi.sendDraw(socket, data);
+			if (!colorClashWs.isConnected) return;
+			colorClashWs.sendDraw(data);
 		},
-		[socket]
+		[colorClashWs]
 	);
 	const handleMove = useCallback(
 		(data: { x: number; y: number; color: string; size: number }) => {
-			if (!socket || !user) return;
+			if (!colorClashWs.isConnected || !user) return;
 
 			// 本地立即更新玩家位置
 			setGameState((prev) =>
@@ -751,18 +709,18 @@ export function ColorClash() {
 			);
 
 			// 发送到服务器
-			colorClashWsApi.sendDraw(socket, data);
+			colorClashWs.sendDraw(data);
 		},
-		[socket, user]
+		[colorClashWs, user]
 	);
 	const handleStartGame = useCallback(() => {
-		if (!socket) return;
+		if (!colorClashWs.isConnected) return;
 		if (!gameState || gameState.players.length < 2) {
 			toast.error('需要至少 2 名玩家才能开始游戏');
 			return;
 		}
-		colorClashWsApi.sendGameStart(socket);
-	}, [socket, gameState]);
+		colorClashWs.sendGameStart();
+	}, [colorClashWs, gameState]);
 
 	if (!gameState) {
 		return (
@@ -806,10 +764,10 @@ export function ColorClash() {
 							</div>
 						)}
 						<Badge
-							variant={isConnected ? 'default' : 'destructive'}
+							variant={colorClashWs.isConnected ? 'default' : 'destructive'}
 							className="px-2 py-1 transition-colors"
 						>
-							{isConnected ? '在线' : '离线'}
+							{colorClashWs.isConnected ? '在线' : '离线'}
 						</Badge>
 						<div className="flex items-center gap-1 rounded bg-gray-100 px-2 py-1 text-sm text-gray-600">
 							<Users className="h-3 w-3" />

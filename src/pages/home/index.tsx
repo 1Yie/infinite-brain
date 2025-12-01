@@ -6,7 +6,7 @@ import type {
 	WhiteboardCanvasHandle,
 	DrawData,
 } from '../board-room/white-board/whiteboard-canvas';
-import { useWebSocket } from '../../hooks/use-websocket';
+import { useBoardWebSocket } from '../../hooks/use-board-websocket';
 import type { StrokeData } from '../../types/whiteboard';
 import { DynamicIcon } from 'lucide-react/dynamic';
 import { authApi } from '../../api/auth';
@@ -75,7 +75,7 @@ export function HomePage() {
 		sendStrokeFinish,
 		sendUndo,
 		sendRedo,
-	} = useWebSocket(true, roomId); // 允许游客使用撤销/重做功能
+	} = useBoardWebSocket(true, roomId); // 允许游客使用撤销/重做功能
 
 	// 监听 WebSocket
 	useEffect(() => {

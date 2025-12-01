@@ -272,11 +272,12 @@ export const guessDrawRoutes = new Elysia({ prefix: '/guess-draw' })
 	.use(auth)
 	// 获取词库
 	.get('/words', () => {
+		const words = WORD_LIBRARY.map((entry) => entry.word);
 		return {
 			success: true,
 			data: {
-				words: WORD_LIBRARY,
-				count: WORD_LIBRARY.length,
+				words,
+				count: words.length,
 			},
 		};
 	})
@@ -618,25 +619,39 @@ export const guessDrawRoutes = new Elysia({ prefix: '/guess-draw' })
 
 		// 随机选择一个词
 		const availableWords = WORD_LIBRARY.filter(
-			(word) => !gameState.usedWords.includes(word)
+			(wordEntry) => !gameState.usedWords.includes(wordEntry.word)
 		);
-		const randomWord =
+		const randomWordEntry =
 			availableWords[Math.floor(Math.random() * availableWords.length)] ||
 			WORD_LIBRARY[0];
-		if (!randomWord) {
+		if (!randomWordEntry) {
 			return {
 				success: false,
 				message: '无法选择词语，请重试',
 			};
 		}
+		const randomWord = randomWordEntry.word;
 		gameState.currentWord = randomWord;
 		gameState.usedWords.push(randomWord);
 
-		// 生成提示（隐藏部分字符）
-		const hintChars = randomWord
-			.split('')
-			.map((char, index) => (index % 2 === 0 ? char : '_'));
-		gameState.wordHint = hintChars.join('');
+		// 生成提示（根据词长度智能隐藏）
+		const generateHint = (word: string): string => {
+			if (word.length === 0) return '';
+			if (word.length === 1) return '_'; // 单字词完全隐藏
+			if (word.length === 2) return word[0] + '_'; // 两字词只显示首字
+			if (word.length === 3) return word[0] + '__'; // 三字词只显示首字
+			if (word.length <= 5)
+				return word[0] + '_'.repeat(word.length - 2) + word[word.length - 1]; // 4-5字词显示首尾
+			// 6字以上：显示首字、末字，中间每隔一个显示一个
+			const hint = word.split('').map((char, index) => {
+				if (index === 0 || index === word.length - 1) return char;
+				if (index % 2 === 1) return char;
+				return '_';
+			});
+			return hint.join('');
+		};
+
+		gameState.wordHint = generateHint(randomWord);
 		gameState.roundStartTime = Date.now();
 
 		// 更新数据库
@@ -776,31 +791,45 @@ export const guessDrawRoutes = new Elysia({ prefix: '/guess-draw' })
 
 						// 选择新词
 						const availableWords = WORD_LIBRARY.filter(
-							(word) => !gameState.usedWords.includes(word)
+							(wordEntry) => !gameState.usedWords.includes(wordEntry.word)
 						);
-						const newWord =
+						const newWordEntry =
 							availableWords[
 								Math.floor(Math.random() * availableWords.length)
 							] || WORD_LIBRARY[0];
-						if (!newWord) {
+						if (!newWordEntry) {
 							return {
 								success: false,
 								message: '无法选择新词语，请重试',
 							};
 						}
+						const newWord = newWordEntry.word;
 						gameState.currentWord = newWord;
 						gameState.usedWords.push(newWord);
 
-						// 生成提示
-						const hintChars = newWord
-							.split('')
-							.map((char, index) => (index % 2 === 0 ? char : '_'));
-						gameState.wordHint = hintChars.join('');
+						// 生成提示（根据词长度智能隐藏）
+						const generateHint2 = (word: string): string => {
+							if (word.length === 0) return '';
+							if (word.length === 1) return '_';
+							if (word.length === 2) return word[0] + '_';
+							if (word.length === 3) return word[0] + '__';
+							if (word.length <= 5)
+								return (
+									word[0] + '_'.repeat(word.length - 2) + word[word.length - 1]
+								);
+							const hint = word.split('').map((char, index) => {
+								if (index === 0 || index === word.length - 1) return char;
+								if (index % 2 === 1) return char;
+								return '_';
+							});
+							return hint.join('');
+						};
+
+						gameState.wordHint = generateHint2(newWord);
 						gameState.roundStartTime = Date.now();
 
 						// 保存下一轮的游戏状态
 						await updateGameState(roomId, gameState);
-
 						return {
 							success: true,
 							message: '恭喜猜对！准备下一轮',

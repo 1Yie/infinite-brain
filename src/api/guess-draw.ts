@@ -1,10 +1,6 @@
 import { client } from './client';
 
-// =================================================================
-// 类型定义 & 推导
-// =================================================================
-
-// 1. 推导 HTTP POST body 类型
+// 推导 HTTP POST body 类型
 type DrawEndpointBody = Parameters<
 	ReturnType<(typeof client.api)['guess-draw']>['draw']['post']
 >[0];
@@ -314,8 +310,9 @@ type GuessDrawSocket = ReturnType<typeof createConnection>;
 type ClientMessage = Parameters<GuessDrawSocket['send']>[0];
 
 /**
- * 提取 Draw 消息类型 (给外部组件使用)
+ * 提取消息类型 (给外部使用)
  */
+export type GuessDrawClientMessage = ClientMessage;
 export type DrawMessage = Extract<ClientMessage, { type: 'draw' }>;
 
 export const guessDrawWsApi = {

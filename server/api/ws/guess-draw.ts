@@ -5,6 +5,7 @@ import {
 	WORD_LIBRARY,
 	type GameState,
 	type GamePlayer,
+	type WordEntry,
 } from '../../types';
 import { db } from '../../db';
 import {
@@ -20,6 +21,9 @@ const roomCleanupTimers = new Map<string, NodeJS.Timeout>();
 
 // WebSocket 连接引用（用于广播）
 const roomConnections = new Map<string, Set<WebSocket>>();
+
+// 玩家连接映射：roomId -> (userId -> ws)（用于确定每个连接的用户身份）
+const playerConnectionMap = new Map<string, Map<string, WebSocket>>();
 
 // 从数据库获取游戏状态
 async function getGameState(roomId: string): Promise<GameState | null> {
@@ -226,14 +230,18 @@ export const gameRoute = new Elysia()
 			}
 			roomConnections.get(roomId)!.add(ws as unknown as WebSocket);
 
+			// 建立玩家-连接映射（用于识别每个连接对应的玩家）
+			if (!playerConnectionMap.has(roomId)) {
+				playerConnectionMap.set(roomId, new Map());
+			}
+			playerConnectionMap.get(roomId)!.set(userId, ws as unknown as WebSocket);
+
 			// 添加用户到房间
 			if (!roomUsers.has(roomId)) {
 				roomUsers.set(roomId, new Set());
 			}
 			const room = roomUsers.get(roomId)!;
-			room.add(userId);
-
-			// 如果有清理定时器，取消它（因为房间又有人了）
+			room.add(userId); // 如果有清理定时器，取消它（因为房间又有人了）
 			clearRoomCleanupTimer(roomId);
 
 			// 发送连接确认给当前用户
@@ -438,9 +446,7 @@ export const gameRoute = new Elysia()
 						data: newGameState,
 						timestamp: Date.now(),
 					};
-					broadcastToAll(roomId, initialStateMsg);
-
-					// 延迟启动第一轮，确保所有客户端都收到状态
+					ws.publish(roomId, initialStateMsg); // 延迟启动第一轮，确保所有客户端都收到状态
 					setTimeout(() => {
 						console.log('延迟后启动第一轮');
 						startNewRound(roomId, ws);
@@ -525,15 +531,8 @@ export const gameRoute = new Elysia()
 							};
 							broadcastToAll(roomId, correctMsg);
 
-							// 广播更新后的游戏状态
-							const updatedStateMsg = {
-								type: 'game-state',
-								data: gameState,
-								timestamp: Date.now(),
-							};
-							broadcastToAll(roomId, updatedStateMsg);
-
-							// 延迟3秒后开始下一轮
+							// 广播更新后的游戏状态（使用 broadcastGameState 确保 currentWord 只发送给画者）
+							broadcastGameState(roomId, gameState); // 延迟3秒后开始下一轮
 							setTimeout(() => {
 								console.log('有人猜对，3秒后开始下一轮');
 								startNewRound(roomId, ws);
@@ -617,6 +616,14 @@ export const gameRoute = new Elysia()
 				}
 			}
 
+			// 清理玩家连接映射
+			const playerConnections = playerConnectionMap.get(roomId);
+			if (playerConnections) {
+				playerConnections.delete(userId);
+				if (playerConnections.size === 0) {
+					playerConnectionMap.delete(roomId);
+				}
+			}
 			const room = roomUsers.get(roomId);
 			if (!room) return;
 
@@ -719,21 +726,15 @@ export const gameRoute = new Elysia()
 				}
 			}
 
-			// 广播更新后的游戏状态
+			// 广播更新后的游戏状态（使用 broadcastGameState 隐藏非画者的 currentWord）
 			if (gameState) {
-				const updatedState = {
-					type: 'game-state',
-					data: {
-						...gameState,
-						players: gameState.players.filter(
-							(p: GamePlayer) => p.userId !== userId
-						),
-					},
-					timestamp: Date.now(),
-				};
-				broadcastToAll(roomId, updatedState);
+				// 更新游戏状态以移除离开的玩家
+				gameState.players = gameState.players.filter(
+					(p: GamePlayer) => p.userId !== userId
+				);
+				broadcastGameState(roomId, gameState);
 				console.log(
-					`向房间 ${roomId} 的 ${connections?.size || 0} 个连接发送消息: game-state`
+					`向房间 ${roomId} 广播更新的游戏状态（已移除玩家 ${userId}）`
 				);
 			}
 
@@ -785,6 +786,43 @@ function broadcastToAll(roomId: string, message: Record<string, unknown>) {
 			ws.send(JSON.stringify(message));
 		} catch (error) {
 			console.error('发送消息失败:', error);
+		}
+	});
+}
+
+// 根据玩家身份发送不同的游戏状态消息（隐藏非画者的 currentWord）
+function broadcastGameState(
+	roomId: string,
+	gameState: GameState,
+	additionalFields?: Record<string, unknown>
+) {
+	// 获取存储的玩家连接信息
+	const playerConnections = playerConnectionMap.get(roomId);
+	if (!playerConnections || playerConnections.size === 0) {
+		console.log(`警告：房间 ${roomId} 没有活跃连接或玩家映射`);
+		return;
+	}
+
+	// 遍历每个玩家的连接，发送特定于玩家的消息
+	playerConnections.forEach((ws, userId) => {
+		try {
+			// 根据玩家身份构建消息
+			const isDrawer = gameState.currentDrawer === userId;
+
+			const stateMessage = {
+				type: 'game-state',
+				data: {
+					...gameState,
+					// 只有画者才能看到真实的单词，其他人只能看到提示
+					currentWord: isDrawer ? gameState.currentWord : null,
+				},
+				...(additionalFields || {}),
+				timestamp: Date.now(),
+			};
+
+			ws.send(JSON.stringify(stateMessage));
+		} catch (error) {
+			console.error(`向用户 ${userId} 发送游戏状态失败:`, error);
 		}
 	});
 }
@@ -867,29 +905,44 @@ async function startNewRound(
 
 	// 选择新词
 	const availableWords = WORD_LIBRARY.filter(
-		(word: string) => !gameState.usedWords.includes(word)
+		(wordEntry: WordEntry) => !gameState.usedWords.includes(wordEntry.word)
 	);
-	let newWord: string | undefined;
+	let newWordEntry: WordEntry | undefined;
 
 	if (availableWords.length > 0) {
 		const randomIndex = Math.floor(Math.random() * availableWords.length);
-		newWord = availableWords[randomIndex];
+		newWordEntry = availableWords[randomIndex];
 	} else {
 		console.log('词库已用完，重置');
 		gameState.usedWords = [];
-		newWord = WORD_LIBRARY[Math.floor(Math.random() * WORD_LIBRARY.length)];
+		newWordEntry =
+			WORD_LIBRARY[Math.floor(Math.random() * WORD_LIBRARY.length)];
 	}
 
-	gameState.usedWords.push(newWord || '');
-	console.log(`选择词汇: ${newWord}`);
+	const newWord = newWordEntry?.word || '';
+	const wordCategory = newWordEntry?.category || '未知';
 
-	// 生成提示（隐藏部分字符）
-	const hintChars = newWord
-		? newWord
-				.split('')
-				.map((char: string, index: number) => (index % 2 === 0 ? char : '_'))
-		: [];
-	const wordHint = hintChars.join('');
+	gameState.usedWords.push(newWord);
+	console.log(`选择词汇: ${newWord} (${wordCategory})`);
+
+	// 生成提示（根据词长度智能隐藏）
+	const generateHint = (word: string): string => {
+		if (word.length === 0) return '';
+		if (word.length === 1) return '_'; // 单字词完全隐藏
+		if (word.length === 2) return word[0] + '_'; // 两字词只显示首字
+		if (word.length === 3) return word[0] + '__'; // 三字词只显示首字
+		if (word.length <= 5)
+			return word[0] + '_'.repeat(word.length - 2) + word[word.length - 1]; // 4-5字词显示首尾
+		// 6字以上：显示首字、末字，中间每隔一个显示一个
+		const hint = word.split('').map((char, index) => {
+			if (index === 0 || index === word.length - 1) return char;
+			if (index % 2 === 1) return char;
+			return '_';
+		});
+		return hint.join('');
+	};
+
+	const wordHint = generateHint(newWord);
 
 	// 更新游戏状态
 	gameState.currentDrawer = newDrawer.userId;
@@ -911,23 +964,13 @@ async function startNewRound(
 		`回合开始时间: ${new Date(gameState.roundStartTime).toLocaleTimeString()}`
 	);
 
-	// 发送完整的游戏状态（最重要！）
-	const completeState = {
-		type: 'game-state',
-		data: {
-			...gameState,
-			isActive: true,
-			currentRound: gameState.currentRound,
-			currentDrawer: gameState.currentDrawer,
-			wordHint: gameState.wordHint,
-			roundStartTime: gameState.roundStartTime,
-			roundTimeLimit: gameState.roundTimeLimit,
-		},
-		timestamp: Date.now(),
-	};
-
 	console.log('发送游戏状态给所有人');
-	broadcastToAll(roomId, completeState);
+	// 使用 broadcastGameState 替代 broadcastToAll，确保 currentWord 只发送给画者
+	broadcastGameState(roomId, gameState, {
+		type: 'game-state',
+		isActive: true,
+		roundTimeLimit: gameState.roundTimeLimit,
+	});
 
 	// 发送回合开始通知（用于UI提示和动画）
 	const roundStartMsg = {
@@ -937,6 +980,7 @@ async function startNewRound(
 		currentDrawer: gameState.currentDrawer,
 		drawerUsername: newDrawer.username,
 		wordHint: gameState.wordHint,
+		wordCategory: wordCategory,
 		roundStartTime: gameState.roundStartTime,
 		roundTimeLimit: gameState.roundTimeLimit,
 		timestamp: Date.now(),
@@ -1010,13 +1054,8 @@ async function endGame(
 	};
 	broadcastToAll(roomId, endMsg);
 
-	// 广播最终游戏状态
-	const finalStateMsg = {
-		type: 'game-state',
-		data: gameState,
-		timestamp: Date.now(),
-	};
-	broadcastToAll(roomId, finalStateMsg);
+	// 广播最终游戏状态（使用 broadcastGameState 隐藏非画者的 currentWord）
+	broadcastGameState(roomId, gameState);
 
 	console.log('====================================\n');
 }

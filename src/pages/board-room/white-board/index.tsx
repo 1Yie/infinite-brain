@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
-import { useWebSocket } from '../../../hooks/use-websocket';
+import { useBoardWebSocket } from '../../../hooks/use-board-websocket';
 import type { StrokeData } from '../../../types/whiteboard';
 import { useAuth } from '../../../context/auth-context';
 import { WhiteboardSidebar } from './whiteboard-sidebar';
@@ -55,7 +55,7 @@ export function Whiteboard({ roomId: roomIdProp }: { roomId?: string }) {
 		sendUndo,
 		sendRedo,
 		// sendClear
-	} = useWebSocket(authorized && isLogged === true, roomId);
+	} = useBoardWebSocket(authorized && isLogged === true, roomId);
 
 	useEffect(() => {
 		const fetchRoomName = async () => {

@@ -58,7 +58,7 @@ interface UseWebSocketReturn {
 	onMessage: (callback: (message: ServerMessage) => void) => () => void;
 }
 
-export function useWebSocket(
+export function useBoardWebSocket(
 	isLoggedIn: boolean = false,
 	roomId?: string
 ): UseWebSocketReturn {

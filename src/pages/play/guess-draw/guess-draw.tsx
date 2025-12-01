@@ -3,44 +3,87 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import {
-	guessDrawApi,
-	guessDrawWsApi,
-	type GameState,
-	type GamePlayer,
-} from '@/api/guess-draw';
+import { useGuessDrawWebSocket } from '@/hooks/use-guess-draw-websocket';
+import { type GameState, type GamePlayer } from '@/api/guess-draw';
 
-// WebSocket 消息类型
-interface WebSocketMessage {
-	type: string;
-	data?: DrawData | StrokeData | GameState;
-	userId?: string;
-	username?: string;
-	roomId?: string;
-	timestamp?: number;
-	// 游戏相关字段
-	totalRounds?: number;
-	guess?: string;
-	message?: string;
-	attempt?: {
-		userId: string;
-		username: string;
-		guess: string;
-		isCorrect: boolean;
-		timestamp: number;
-	};
-	score?: number;
-	// 回合相关字段
-	currentRound?: number;
-	drawerUsername?: string;
-	wordHint?: string;
-	word?: string;
-	winner?: boolean;
-	reason?: string;
-	winnerName?: string;
-	roundTimeLimit?: number;
-	roundStartTime?: number;
-}
+// 精确的 WebSocket 消息类型定义
+type GuessDrawMessage =
+	| { type: 'connected'; timestamp: number }
+	| { type: 'game-state'; data: GameState; timestamp: number }
+	| {
+			type: 'round-start';
+			currentRound: number;
+			drawerUsername: string;
+			wordHint: string;
+			roundTimeLimit: number;
+			roundStartTime: number;
+			wordCategory?: string;
+			timestamp: number;
+	  }
+	| {
+			type: 'draw';
+			data: DrawData;
+			timestamp: number;
+			userId?: string;
+	  }
+	| {
+			type: 'stroke-finish';
+			data: StrokeData;
+			timestamp: number;
+			userId?: string;
+	  }
+	| {
+			type: 'clear';
+			timestamp: number;
+			userId?: string;
+	  }
+	| {
+			type: 'guess-attempt';
+			attempt?: { username: string; guess: string };
+			userId?: string;
+			username?: string;
+			guess?: string;
+			isCorrect?: boolean;
+			timestamp: number;
+	  }
+	| {
+			type: 'game-chat';
+			userId: string;
+			username: string;
+			message: string;
+			timestamp: number;
+	  }
+	| {
+			type: 'game-end';
+			finalScores: GamePlayer[];
+			timestamp: number;
+	  }
+	| {
+			type: 'player-joined' | 'player-left' | 'user-joined' | 'user-left';
+			userId: string;
+			username: string;
+			timestamp: number;
+	  }
+	| {
+			type: 'round-end';
+			word: string;
+			winner?: boolean;
+			reason?: string;
+			timestamp: number;
+	  }
+	| {
+			type: 'game-started' | 'guess-correct';
+			userId: string;
+			username: string;
+			score: number;
+			timestamp: number;
+	  }
+	| {
+			type: 'error';
+			message: string;
+			timestamp: number;
+	  };
+
 import {
 	WhiteboardCanvas,
 	type WhiteboardCanvasHandle,
@@ -65,21 +108,20 @@ import {
 	Clock,
 } from 'lucide-react';
 
-type SocketType = ReturnType<typeof guessDrawWsApi.connect>;
-
 export function GuessDrawPage() {
 	const navigate = useNavigate();
 	const { roomId } = useParams<{ roomId: string }>();
 	const { user } = useAuth();
 	const gameStateRef = useRef<GameState | null>(null);
-	const socketRef = useRef<SocketType | null>(null);
 	const canvasRef = useRef<WhiteboardCanvasHandle>(null);
 	const chatMessagesRef = useRef<HTMLDivElement>(null);
 
 	// 游戏状态
 	const [gameState, setGameState] = useState<GameState | null>(null);
 	const [isLoading, setIsLoading] = useState(true);
-	const [isConnected, setIsConnected] = useState(false);
+
+	// 使用 WebSocket Hook
+	const guessDrawWs = useGuessDrawWebSocket(!!roomId && !!user, roomId);
 
 	// 绘图状态
 	const [tool, setTool] = useState<'pen' | 'eraser'>('pen');
@@ -91,6 +133,7 @@ export function GuessDrawPage() {
 	const [chatMessages, setChatMessages] = useState<
 		{ name: string; msg: string; isSystem?: boolean }[]
 	>([]);
+	const [wordCategory, setWordCategory] = useState<string>('');
 
 	// 派生状态 - 确保每次 gameState 变化时重新计算
 	const userId = user?.id?.toString() || '';
@@ -152,18 +195,14 @@ export function GuessDrawPage() {
 	useEffect(() => {
 		if (!roomId || !userId) return;
 
-		console.log('🔌 建立 WebSocket 连接...');
-		const ws = guessDrawWsApi.connect(roomId);
-		socketRef.current = ws;
-
-		ws.subscribe((message) => {
-			const data = message.data as WebSocketMessage;
+		console.log('🔌 订阅 WebSocket 消息...');
+		const unsubscribe = guessDrawWs.onMessage((message) => {
+			const data = message as unknown as GuessDrawMessage;
 			console.log('📨 收到消息:', data.type, data);
 
 			switch (data.type) {
 				case 'connected':
 					console.log('✅ WebSocket 连接成功');
-					setIsConnected(true);
 					break;
 
 				case 'game-state':
@@ -253,7 +292,11 @@ export function GuessDrawPage() {
 					console.log(`🎯 第 ${data.currentRound} 回合开始`);
 					console.log(`   画者: ${data.drawerUsername}`);
 					console.log(`   提示: ${data.wordHint}`);
+					console.log(`   分类: ${data.wordCategory}`);
 					console.log(`   回合时间: ${data.roundTimeLimit}秒`);
+
+					// 更新词类别
+					setWordCategory(data.wordCategory || '');
 
 					// 更新游戏状态中的回合时间和开始时间
 					setGameState((prev) => {
@@ -263,9 +306,7 @@ export function GuessDrawPage() {
 							roundTimeLimit: data.roundTimeLimit || prev.roundTimeLimit || 60,
 							roundStartTime: data.roundStartTime || prev.roundStartTime,
 						};
-					});
-
-					// 清空画布
+					}); // 清空画布
 					canvasRef.current?.clear();
 
 					// 添加系统消息
@@ -306,13 +347,15 @@ export function GuessDrawPage() {
 
 				case 'game-end': {
 					console.log('🎊 游戏结束');
-					console.log('🏆 胜利者:', data.winnerName, '原因:', data.reason);
+					// 从 finalScores 数组中提取赢家信息（第一个是最高分）
+					const winner = data.finalScores?.[0];
+					const winnerName = winner?.username || '某位玩家';
+					console.log('🏆 胜利者:', winnerName, '分数:', winner?.score);
 
 					let endMessage = '游戏结束！';
-					if (data.winnerName) {
-						endMessage = `🎉 ${data.winnerName} 获胜！`;
+					if (winner) {
+						endMessage = `🎉 ${winnerName} 获胜！(${winner.score}分)`;
 					}
-
 					setChatMessages((prev) => [
 						...prev.slice(-19),
 						{
@@ -434,32 +477,14 @@ export function GuessDrawPage() {
 			}
 		});
 
-		// 初始获取状态（兜底）
-		guessDrawApi
-			.getRoomState(roomId)
-			.then((res) => {
-				if (res.success && res.data) {
-					console.log('📥 获取初始状态成功');
-					setGameState(res.data.gameState);
-					setIsLoading(false);
-				}
-			})
-			.catch((err) => {
-				console.error('❌ 获取初始状态失败', err);
-				setIsLoading(false);
-			});
-
 		return () => {
-			console.log('🔌 关闭 WebSocket 连接');
-			if (socketRef.current) {
-				socketRef.current.close();
-				setIsConnected(false);
-			}
+			console.log('🔌 取消订阅 WebSocket 消息');
+			unsubscribe();
 		};
-	}, [roomId, userId, navigate]); // 移除 gameState 依赖，避免不必要的重连
+	}, [roomId, userId, guessDrawWs]);
 
 	const handleStartGame = async () => {
-		if (!socketRef.current) {
+		if (!guessDrawWs.isConnected) {
 			console.error('❌ WebSocket 连接未建立');
 			return;
 		}
@@ -468,11 +493,7 @@ export function GuessDrawPage() {
 			return;
 		}
 		console.log('🎮 发送游戏开始请求...');
-		guessDrawWsApi.sendGameStart(
-			socketRef.current,
-			gameState.totalRounds,
-			gameState.roundTimeLimit
-		);
+		guessDrawWs.sendGameStart(gameState.totalRounds, gameState.roundTimeLimit);
 	};
 
 	const handleSubmitGuess = async () => {
@@ -481,50 +502,48 @@ export function GuessDrawPage() {
 			return;
 		}
 
-		if (!guessInput.trim() || !socketRef.current) return;
+		if (!guessInput.trim() || !guessDrawWs.isConnected) return;
 
 		console.log('💭 发送猜测:', guessInput);
-		guessDrawWsApi.sendGuess(socketRef.current, guessInput.trim());
+		guessDrawWs.sendGuess(guessInput.trim());
 		setGuessInput('');
 	};
 
 	const handleSendChat = () => {
-		if (!guessInput.trim() || !socketRef.current) return;
+		if (!guessInput.trim() || !guessDrawWs.isConnected) return;
 
 		console.log('💬 发送聊天:', guessInput);
-		guessDrawWsApi.sendGameChat(socketRef.current, guessInput.trim());
+		guessDrawWs.sendGameChat(guessInput.trim());
 		setGuessInput('');
 	};
 
 	const handleStrokeFinished = useCallback(
 		(stroke: StrokeData) => {
-			if (!isDrawer || !socketRef.current) {
+			if (!isDrawer || !guessDrawWs.isConnected) {
 				return;
 			}
-			// @ts-expect-error ts-migrate(2345) FIXME: Argument of type 'SocketType' is not assignable to parameter of type 'WebSocket'.
-			guessDrawWsApi.sendStrokeFinish(socketRef.current, stroke);
+			guessDrawWs.sendStrokeFinish(stroke);
 		},
-		[isDrawer]
+		[isDrawer, guessDrawWs]
 	);
 
 	const handleRealtimeDraw = useCallback(
 		(data: DrawData) => {
-			if (!isDrawer || !socketRef.current) {
+			if (!isDrawer || !guessDrawWs.isConnected) {
 				return;
 			}
-			// @ts-expect-error ts-migrate(2345) FIXME: Argument of type 'SocketType' is not assignable to parameter of type 'WebSocket'.
-			guessDrawWsApi.sendDraw(socketRef.current, data);
+			guessDrawWs.sendDraw(data);
 		},
-		[isDrawer]
+		[isDrawer, guessDrawWs]
 	);
 
 	const handleClearCanvas = () => {
-		if (!isDrawer || !socketRef.current) {
+		if (!isDrawer || !guessDrawWs.isConnected) {
 			console.log('⚠️ 只有画者才能清空画布');
 			return;
 		}
 		canvasRef.current?.clear();
-		guessDrawWsApi.sendClear(socketRef.current);
+		guessDrawWs.sendClear();
 	};
 
 	if (isLoading) {
@@ -586,10 +605,10 @@ export function GuessDrawPage() {
 
 					<div className="flex items-center gap-3">
 						<Badge
-							variant={isConnected ? 'default' : 'destructive'}
+							variant={guessDrawWs.isConnected ? 'default' : 'destructive'}
 							className="px-2 py-1 transition-colors"
 						>
-							{isConnected ? '在线' : '离线'}
+							{guessDrawWs.isConnected ? '在线' : '离线'}
 						</Badge>
 						<div className="flex items-center gap-1 rounded bg-gray-100 px-2 py-1 text-sm text-gray-600">
 							<Users className="h-3 w-3" />
@@ -630,8 +649,11 @@ export function GuessDrawPage() {
 										{currentWord}
 									</div>
 								) : (
-									<div className="font-mono text-xs tracking-widest text-gray-700">
-										{gameState.wordHint}
+									<div>
+										<div className="text-xs text-gray-500">{wordCategory}</div>
+										<div className="font-mono text-xs tracking-widest text-gray-700">
+											{gameState.wordHint}
+										</div>
 									</div>
 								)}
 							</>
@@ -728,6 +750,12 @@ export function GuessDrawPage() {
 											</>
 										) : (
 											<>
+												<div className="mb-2 flex flex-col gap-1">
+													<div className="text-xs text-gray-400">分类</div>
+													<div className="font-semibold text-gray-700">
+														{wordCategory}
+													</div>
+												</div>
 												<div className="mb-1 text-xs text-gray-400">提示</div>
 												<div className="font-mono text-xl tracking-[0.2em] text-gray-800">
 													{gameState.wordHint}

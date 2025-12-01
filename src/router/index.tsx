@@ -11,7 +11,7 @@ import { SetTitle } from '@/utils/set-title';
 import { GuessDrawRoom } from '../pages/play/guess-draw';
 import { CreateGuessDrawRoom } from '../pages/play/guess-draw/create-room';
 import { GuessDrawPage } from '../pages/play/guess-draw/guess-draw';
-import { NotFoundPage } from '../pages/not-found';
+import { NotFoundPage } from '../pages/error-page/not-found';
 import { RoomGuard } from '../components/router/room-guard';
 import { WhiteboardPage } from '../pages/board-room';
 import { CreateWhiteboardRoom } from '../pages/board-room/create-room';
