@@ -39,10 +39,7 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
 			);
 			console.log('开发环境模式:', isDevelopment);
 
-			// 开发环境下，如果 captchaToken 是测试令牌格式，直接通过
-			if (isDevelopment && body.captchaToken.startsWith('XXXX.DUMMY')) {
-				console.log('开发环境：接受测试 CAPTCHA Token');
-			} else if (!secretKey) {
+			if (!secretKey) {
 				console.error('TURNSTILE_SECRET_KEY 环境变量未设置');
 				set.status = 500;
 				return { success: false, message: '服务器配置错误' };
@@ -118,9 +115,7 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
 			console.log('登录请求 - 开发环境模式:', isDevelopment);
 
 			// 验证 CAPTCHA Token
-			if (isDevelopment && body.captchaToken.startsWith('XXXX.DUMMY')) {
-				console.log('开发环境：接受测试 CAPTCHA Token');
-			} else if (!secretKey) {
+			if (!secretKey) {
 				console.error('TURNSTILE_SECRET_KEY 环境变量未设置');
 				set.status = 500;
 				return { success: false, message: '服务器配置错误' };
