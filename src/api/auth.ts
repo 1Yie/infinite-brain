@@ -4,14 +4,22 @@ export const authApi = {
 	/**
 	 * 用户注册
 	 */
-	register: (form: { username: string; password: string }) => {
+	register: (form: {
+		username: string;
+		password: string;
+		captchaToken: string;
+	}) => {
 		return client.api.auth.register.post(form);
 	},
 
 	/**
 	 * 用户登录
 	 */
-	login: (form: { username: string; password: string }) => {
+	login: (form: {
+		username: string;
+		password: string;
+		captchaToken: string;
+	}) => {
 		return client.api.auth.login.post(form);
 	},
 

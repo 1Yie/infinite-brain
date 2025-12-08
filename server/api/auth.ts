@@ -19,12 +19,61 @@ const UserSchema = t.Object({
 	name: t.String(),
 });
 
+type TurnstileVerifyResult = {
+	success: boolean;
+	'error-codes'?: string[];
+};
+
 export const authRoutes = new Elysia({ prefix: '/auth' })
 	.use(jwtAccess)
 
 	.post(
 		'/register',
 		async ({ body, set }) => {
+			const secretKey = process.env.TURNSTILE_SECRET_KEY;
+			const isDevelopment = process.env.NODE_ENV !== 'production';
+
+			console.log(
+				'环境变量 TURNSTILE_SECRET_KEY:',
+				secretKey ? '已设置' : '未设置'
+			);
+			console.log('开发环境模式:', isDevelopment);
+
+			// 开发环境下，如果 captchaToken 是测试令牌格式，直接通过
+			if (isDevelopment && body.captchaToken.startsWith('XXXX.DUMMY')) {
+				console.log('开发环境：接受测试 CAPTCHA Token');
+			} else if (!secretKey) {
+				console.error('TURNSTILE_SECRET_KEY 环境变量未设置');
+				set.status = 500;
+				return { success: false, message: '服务器配置错误' };
+			} else {
+				console.log(
+					'开始验证 Captcha Token:',
+					body.captchaToken.substring(0, 20) + '...'
+				);
+
+				const verifyRes = await fetch(
+					'https://challenges.cloudflare.com/turnstile/v0/siteverify',
+					{
+						headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+						method: 'POST',
+						body: new URLSearchParams({
+							secret: secretKey,
+							response: body.captchaToken,
+						}),
+					}
+				);
+
+				const captchaResult = (await verifyRes.json()) as TurnstileVerifyResult;
+				console.log('Captcha 验证结果:', captchaResult);
+
+				if (!captchaResult.success) {
+					console.warn('Turnstile 验证失败:', captchaResult);
+					set.status = 400;
+					return { success: false, message: '人机验证失败' };
+				}
+			}
+
 			const hashedPassword = await Bun.password.hash(body.password);
 			try {
 				await db.insert(users).values({
@@ -42,6 +91,7 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
 			body: t.Object({
 				username: t.String({ minLength: 3, description: '用户名' }),
 				password: t.String({ minLength: 6, description: '密码' }),
+				captchaToken: t.String({ description: '人机验证令牌' }),
 			}),
 			response: {
 				200: SuccessResponse,
@@ -58,6 +108,51 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
 	.post(
 		'/login',
 		async ({ body, jwt, set, cookie }) => {
+			const secretKey = process.env.TURNSTILE_SECRET_KEY;
+			const isDevelopment = process.env.NODE_ENV !== 'production';
+
+			console.log(
+				'登录请求 - 环境变量 TURNSTILE_SECRET_KEY:',
+				secretKey ? '已设置' : '未设置'
+			);
+			console.log('登录请求 - 开发环境模式:', isDevelopment);
+
+			// 验证 CAPTCHA Token
+			if (isDevelopment && body.captchaToken.startsWith('XXXX.DUMMY')) {
+				console.log('开发环境：接受测试 CAPTCHA Token');
+			} else if (!secretKey) {
+				console.error('TURNSTILE_SECRET_KEY 环境变量未设置');
+				set.status = 500;
+				return { success: false, message: '服务器配置错误' };
+			} else {
+				console.log(
+					'开始验证登录 Captcha Token:',
+					body.captchaToken.substring(0, 20) + '...'
+				);
+
+				const verifyRes = await fetch(
+					'https://challenges.cloudflare.com/turnstile/v0/siteverify',
+					{
+						headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+						method: 'POST',
+						body: new URLSearchParams({
+							secret: secretKey,
+							response: body.captchaToken,
+						}),
+					}
+				);
+
+				const captchaResult = (await verifyRes.json()) as TurnstileVerifyResult;
+				console.log('登录 Captcha 验证结果:', captchaResult);
+
+				if (!captchaResult.success) {
+					console.warn('登录 Turnstile 验证失败:', captchaResult);
+					set.status = 400;
+					return { success: false, message: '人机验证失败' };
+				}
+			}
+
+			// 验证用户名和密码
 			const [user] = await db
 				.select()
 				.from(users)
@@ -96,6 +191,7 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
 			body: t.Object({
 				username: t.String({ default: 'admin' }),
 				password: t.String({ default: '123456' }),
+				captchaToken: t.String({ description: '人机验证令牌' }),
 			}),
 			response: {
 				200: t.Object({

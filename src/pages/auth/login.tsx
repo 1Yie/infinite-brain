@@ -27,7 +27,7 @@ export function Login() {
 		setIsLoading(true);
 
 		try {
-			await login(username.trim(), password);
+			await login(username.trim(), password, captchaToken);
 			toast.success('登录成功');
 		} catch (error) {
 			console.error('登录错误:', error);

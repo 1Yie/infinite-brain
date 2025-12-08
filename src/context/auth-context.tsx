@@ -8,7 +8,11 @@ type AuthContextType = {
 	isLogged: boolean | null;
 	user: User | null;
 	setUser: React.Dispatch<React.SetStateAction<User | null>>;
-	login: (username: string, password: string) => Promise<LoginResponse>;
+	login: (
+		username: string,
+		password: string,
+		captchaToken: string
+	) => Promise<LoginResponse>;
 	logout: () => Promise<LogoutResponse>;
 	handleAuthFailure: () => void;
 	refreshUser: () => Promise<void>;
@@ -53,8 +57,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 		};
 	}, []);
 
-	const login = async (username: string, password: string) => {
-		const response = await authApi.login({ username, password });
+	const login = async (
+		username: string,
+		password: string,
+		captchaToken: string
+	) => {
+		const response = await authApi.login({ username, password, captchaToken });
 
 		if (response.data && 'user' in response.data) {
 			setIsLogged(true);

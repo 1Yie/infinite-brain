@@ -42,6 +42,7 @@ export function Register() {
 			const response = await authApi.register({
 				username: username.trim(),
 				password,
+				captchaToken,
 			});
 
 			if (
@@ -80,7 +81,7 @@ export function Register() {
 								href="/login"
 								className="ml-1 font-medium text-zinc-900 hover:text-zinc-700"
 							>
-								立即登录
+								立即登录 {captchaToken}
 							</a>
 						</p>
 					</div>
